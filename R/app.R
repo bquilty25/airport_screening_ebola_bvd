@@ -203,7 +203,13 @@ run_app <- function() {
                 round(probs$prop_symp_at_entry[1]))
             )
           ),
-          ordered = TRUE
+          ordered = TRUE,
+          levels = c(
+            "detected at exit screening",
+            "detected as severe on flight",
+            "detected at entry screening",
+            "not detected"
+          )
         )
       ) %>%
         dplyr::mutate(
@@ -219,7 +225,7 @@ run_app <- function() {
         )
 
 
-      waffle_counts <- dplyr::count(waffle_labels, .data$desc) %>%
+      waffle_counts <- dplyr::count(waffle_labels, .data$desc, .drop = FALSE) %>%
         dplyr::mutate(desc_comb = paste(.data$n, .data$desc))
 
       waffle_df <- expand.grid(y = -seq_len(5), x = seq_len(20)) %>%
@@ -248,13 +254,12 @@ run_app <- function() {
         # dplyr::mutate(group=as.factor(group),
         dplyr::mutate(label = emojifont::fontawesome(
           dplyr::case_when(
-            .data$desc == "detected at exit screening" ~ "fa-user",
-            .data$desc == "detected at entry screening" ~ "fa-user-circle",
-            .data$desc == "detected as severe on flight" ~ "fa-user-circle",
-            .data$desc == "not detected" ~ "fa-user-circle"
+            .data$desc == "detected at exit screening"   ~ "fa-user",
+            .data$desc == "detected at entry screening"  ~ "fa-user-circle",
+            .data$desc == "detected as severe on flight" ~ "fa-user-md",
+            .data$desc == "not detected"                 ~ "fa-exclamation-circle"
           )
         ))
-
 
       waffle_colors <- RColorBrewer::brewer.pal(4, name = "Set2")[c(1, 4, 3, 2)]
 
