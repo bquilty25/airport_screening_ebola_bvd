@@ -296,7 +296,7 @@ run_app <- function() {
 
       names(waffle_colors) <- levels(waffle_data$desc_comb)
 
-      library(emojifont)
+      emojifont::load.fontawesome(font = "fontawesome-webfont.ttf")
       
       waffle_plot <- ggplot2::ggplot(
         data = waffle_data,
