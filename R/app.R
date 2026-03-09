@@ -296,6 +296,8 @@ run_app <- function() {
 
       names(waffle_colors) <- levels(waffle_data$desc_comb)
 
+      library(emojifont)
+      
       waffle_plot <- ggplot2::ggplot(
         data = waffle_data,
         ggplot2::aes(x = .data$x, y = .data$y, colour = .data$desc_comb)
