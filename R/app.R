@@ -59,7 +59,7 @@ run_app <- function() {
     shiny::fluidPage(
       shiny::titlePanel(
         paste0(
-          "Effectiveness of airport screening at detecting",
+          "Effectiveness of airport screening at detecting ",
           "infected travellers"
         )
       ),
