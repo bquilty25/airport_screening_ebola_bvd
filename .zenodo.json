@@ -15,6 +15,11 @@
       "relation": "isSupplementTo",
       "identifier": "https://doi.org/10.2807/1560-7917.ES.2020.25.5.2000080",
       "scheme": "url"
+    },
+    {
+      "relation": "isDocumentedBy",
+      "identifier": "https://bquilty25.github.io/airport_screening_ebola_bvd",
+      "scheme": "url"
     }
   ],
   "keywords": [
