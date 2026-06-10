@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 <!-- badges: end -->
 
-An R package and Shiny app for estimating the effectiveness of airport screening at detecting infected travellers, adapted for **Bundibugyo ebolavirus (BDBV)** in the context of the 2026 DRC outbreak.
+An R package and Shiny app for estimating the effectiveness of airport screening in detecting infected travellers, adapted for **Bundibugyo ebolavirus (BDBV)** in the context of the 2026 DRC outbreak.
 
 For a 12-hour DRC/Uganda-to-UK connecting itinerary with 86% screening sensitivity at both departure and arrival, combined exit and entry screening is estimated to leave the majority of infected travellers undetected, primarily because most board their flight before symptom onset. Natural-history parameters are drawn from the Bayesian re-analysis of the 2012 Isiro outbreak line list (Funk & Abbott 2026). Full methods and results are available in the [accompanying report](https://bquilty25.github.io/airport_screening_ebola_bvd).
 
