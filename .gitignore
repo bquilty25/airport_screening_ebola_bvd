@@ -1,5 +1,7 @@
 
 rsconnect/shinyapps.io/bquilty/airport_screening.dcf
+lit/
+.claude/
 
 .Rproj.user/*
 .Rproj.user
@@ -10,7 +12,6 @@ rsconnect/shinyapps.io/bquilty/airport_screening.dcf
 .RData
 .Ruserdata
 .DS_Store
-docs
 inst/doc
 /doc/
 /Meta/

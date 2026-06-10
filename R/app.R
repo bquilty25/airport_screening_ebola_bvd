@@ -1,4 +1,3 @@
-
 #' CMMID Shiny for the efficacy of airport screening for infectious diseases
 #'
 #' @description Runs a local instance of a Shiny app developed by the Centre for
@@ -67,25 +66,53 @@ run_app <- function() {
       shiny::sidebarLayout(
         shiny::sidebarPanel(
           shiny::sliderInput("dur.flight",
-            label = "Travel duration (hours)",
+            label = "Travel duration (hours) — DRC/Uganda to UK: ~12 h",
             min = 1, max = 20, step = 1, value = 12
           ),
-          shiny::sliderInput(
-            inputId = "sens.exit",
-            label = "Sensitivity of exit screening",
-            value = 86, min = 0, max = 100, step = 1, post = " %"
+          shiny::checkboxInput("do_exit",
+            label = "Exit screening?",
+            value = TRUE
           ),
-          shiny::sliderInput(
-            inputId = "sens.entry",
-            label = "Sensitivity of entry screening",
-            value = 86, min = 0, max = 100, step = 1, post = " %"
+          shiny::conditionalPanel(
+            condition = "input.do_exit == true",
+            shiny::sliderInput(
+              inputId = "sens.exit",
+              label = "Sensitivity of exit screening",
+              value = 86, min = 0, max = 100, step = 1, post = " %"
+            )
+          ),
+          shiny::checkboxInput("do_entry",
+            label = "Entry screening?",
+            value = TRUE
+          ),
+          shiny::conditionalPanel(
+            condition = "input.do_entry == true",
+            shiny::sliderInput(
+              inputId = "sens.entry",
+              label = "Sensitivity of entry screening",
+              value = 86, min = 0, max = 100, step = 1, post = " %"
+            )
           ),
           shiny::sliderInput(
             inputId = "prop.asy",
             label = "Proportion of cases that are asymptomatic",
             value = 17, min = 0, max = 100, step = 1, post = " %"
           ),
-          shiny::hr(),
+          shiny::checkboxInput("do_growth",
+            label = "Adjust for epidemic growth phase?",
+            value = FALSE
+          ),
+          shiny::conditionalPanel(
+            condition = "input.do_growth == true",
+            shiny::sliderInput(
+              inputId = "doubling_time",
+              label = shiny::HTML(
+                "Epidemic doubling time (days)<br/>",
+                "<small style='color:grey'>epiforecasts BDBV 2026, 90% CrI: 13.8\u201322.8 (initial), 4.5\u201343.6 (latest)</small>"
+              ),
+              min = 4.5, max = 44, step = 0.5, value = 18
+            )
+          ),
           shiny::div(
             class = "header",
             shiny::selectInput("pathogen",
@@ -95,25 +122,25 @@ run_app <- function() {
             ),
             shiny::numericInput("mu_inc",
               "Days from infection to symptom onset (mean)",
-              value = 5.2, min = 0.1, max = 20, step = 0.1
+              value = 9.0, min = 0.1, max = 30, step = 0.1
             ),
             shiny::numericInput("sigma_inc",
-              "Days from infection to symptom onset (variance)",
-              value = 4.1, min = 0.1, max = 20, step = 0.1
+              "Days from infection to symptom onset (SD, days)",
+              value = 5.0, min = 0.01, max = 30, step = 0.01
             ),
             shiny::numericInput("mu_inf",
               paste0(
-                "Days from symptom onset to severe symptoms e.g",
+                "Days from symptom onset to severe symptoms e.g.",
                 " hospitalisation (mean)"
               ),
-              value = 9.1, min = 0.1, max = 20, step = 0.1
+              value = 4.03, min = 0.1, max = 30, step = 0.1
             ),
             shiny::numericInput("sigma_inf",
               paste0(
-                "Days from symptom onset to severe symptoms e.g",
-                " hospitalisation (variance)"
+                "Days from symptom onset to severe symptoms e.g.",
+                " hospitalisation (SD, days)"
               ),
-              value = 14.7, min = 0.1, max = 20, step = 0.1
+              value = 3.70, min = 0.01, max = 30, step = 0.01
             )
           ),
           shiny::checkboxInput("uncert",
@@ -151,57 +178,63 @@ run_app <- function() {
     )
   )
   server <- function(input, output, session) {
+    # Effective inputs: zero out sensitivity when screening is toggled off
+    eff_input <- shiny::reactive({
+      list(
+        dur.flight = input$dur.flight,
+        mu_inc = input$mu_inc,
+        sigma_inc = input$sigma_inc^2,
+        mu_inf = input$mu_inf,
+        sigma_inf = input$sigma_inf^2,
+        sens.exit = if (isTRUE(input$do_exit)) input$sens.exit else 0,
+        sens.entry = if (isTRUE(input$do_entry)) input$sens.entry else 0,
+        prop.asy = input$prop.asy,
+        growth_rate = if (isTRUE(input$do_growth)) log(2) / input$doubling_time else 0
+      )
+    })
+
     shiny::observe({
       pathogen_input <- input$pathogen
 
       shiny::updateNumericInput(session, "prop.asy",
         value = pathogen_parameters[pathogen_parameters$name ==
-          pathogen_input, ]$prop.asy*100
+          pathogen_input, ]$prop.asy
       )
       shiny::updateNumericInput(session, "mu_inc",
         value = pathogen_parameters[pathogen_parameters$name ==
           pathogen_input, ]$mu_inc
       )
       shiny::updateNumericInput(session, "sigma_inc",
-        value = pathogen_parameters[pathogen_parameters$name ==
-          pathogen_input, ]$sigma_inc
+        value = round(sqrt(pathogen_parameters[pathogen_parameters$name ==
+          pathogen_input, ]$sigma_inc), 2)
       )
       shiny::updateNumericInput(session, "mu_inf",
         value = pathogen_parameters[pathogen_parameters$name ==
           pathogen_input, ]$mu_inf
       )
       shiny::updateNumericInput(session, "sigma_inf",
-        value = pathogen_parameters[pathogen_parameters$name ==
-          pathogen_input, ]$sigma_inf
+        value = round(sqrt(pathogen_parameters[pathogen_parameters$name ==
+          pathogen_input, ]$sigma_inf), 2)
       )
     })
 
     waffle_df <- shiny::reactive({
-      travellers <- generate_travellers(input, i = rep(10000, 1))
+      travellers <- generate_travellers(eff_input(), i = rep(10000, 1))
 
       probs <- generate_probabilities(travellers)
+
+      n_exit <- round(probs$prop_symp_at_exit[1] * 10)
+      n_sev <- round(probs$prop_sev_at_entry[1] * 10)
+      n_entry <- round(probs$prop_symp_at_entry[1] * 10)
+      n_missed <- 1000L - (n_exit + n_sev + n_entry)
 
       waffle_labels <- data.frame(
         desc = factor(
           c(
-            rep(
-              "detected at exit screening",
-              round(probs$prop_symp_at_exit)[1]
-            ),
-            rep(
-              "detected as severe on flight",
-              round(probs$prop_sev_at_entry)[1]
-            ),
-            rep(
-              "detected at entry screening",
-              round(probs$prop_symp_at_entry)[1]
-            ),
-            rep(
-              "not detected",
-              100 - (round(probs$prop_symp_at_exit[1]) +
-                round(probs$prop_sev_at_entry)[1] +
-                round(probs$prop_symp_at_entry[1]))
-            )
+            rep("detected at exit screening", n_exit),
+            rep("detected as severe on flight", n_sev),
+            rep("detected at entry screening", n_entry),
+            rep("not detected", n_missed)
           ),
           ordered = TRUE,
           levels = c(
@@ -226,9 +259,9 @@ run_app <- function() {
 
 
       waffle_counts <- dplyr::count(waffle_labels, .data$desc, .drop = FALSE) %>%
-        dplyr::mutate(desc_comb = paste(.data$n, .data$desc))
+        dplyr::mutate(desc_comb = paste0(.data$desc, " (", .data$n, ")"))
 
-      waffle_df <- expand.grid(y = -seq_len(5), x = seq_len(20)) %>%
+      waffle_df <- expand.grid(y = seq_len(25), x = seq_len(40)) %>%
         tibble::as_tibble() %>%
         dplyr::bind_cols(waffle_labels) %>%
         dplyr::mutate(desc_comb = factor(
@@ -240,155 +273,117 @@ run_app <- function() {
     })
 
     nat_hist_periods <- shiny::reactive({
-      # convert to gamma parameters
       periods <- data.frame(
-        inc_period = time_to_event(1e4, input$mu_inc, input$sigma_inc),
-        inf_period = time_to_event(1e4, input$mu_inf, input$sigma_inf)
+        inc_period = time_to_event(1e4, input$mu_inc, input$sigma_inc^2),
+        inf_period = time_to_event(1e4, input$mu_inf, input$sigma_inf^2)
       )
       return(periods)
     })
 
     output$waffleplot <- shiny::renderPlot(expr = {
       waffle <- waffle_df()
-      waffle_data <- waffle %>%
-        # dplyr::mutate(group=as.factor(group),
-        dplyr::mutate(label = emojifont::fontawesome(
-          dplyr::case_when(
-            .data$desc == "detected at exit screening"   ~ "fa-user",
-            .data$desc == "detected at entry screening"  ~ "fa-user-circle",
-            .data$desc == "detected as severe on flight" ~ "fa-user-md",
-            .data$desc == "not detected"                 ~ "fa-exclamation-circle"
-          )
-        ))
 
-      waffle_colors <- RColorBrewer::brewer.pal(4, name = "Set2")[c(1, 4, 3, 2)]
-
-      waffle_counts_df <- dplyr::count(waffle_data, .data$desc, name = "n")
-      waffle_not_detected_on_exit <- waffle_counts_df %>%
-        dplyr::filter(.data$desc != "detected at exit screening") %>%
-        dplyr::summarise(N = sum(.data$n)) %>%
-        dplyr::pull(.data$N)
-
-      waffle_detected_on_entry_or_flight <-
-        waffle_counts_df %>%
-        dplyr::filter(
-          .data$desc %in% c(
-            "detected as severe on flight",
-            "detected at entry screening"
-          )
-        ) %>%
-        dplyr::summarise(N = sum(.data$n)) %>%
-        as.data.frame() %>%
-        dplyr::pull(.data$N)
-
-      waffle_counts_vec <- waffle_counts_df$n
-      names(waffle_counts_vec) <- waffle_counts_df$desc
-
-      waffle_subtitle <- sprintf(
-        paste0(
-          "%i cases not detected at exit screening.\n%0.2f%% of these %i cases",
-          " were then detected either during flight or at entry screening"
-        ),
-        waffle_not_detected_on_exit,
-        100 * waffle_detected_on_entry_or_flight / waffle_not_detected_on_exit,
-        waffle_not_detected_on_exit
+      tile_colors <- c(
+        "detected at exit screening"   = "#66C2A5",
+        "detected as severe on flight" = "#E78AC3",
+        "detected at entry screening"  = "#8DA0CB",
+        "not detected"                 = "#FC8D62"
       )
 
-      names(waffle_colors) <- levels(waffle_data$desc_comb)
-
-      emojifont::load.fontawesome(font = "fontawesome-webfont.ttf")
-      
-      waffle_plot <- ggplot2::ggplot(
-        data = waffle_data,
-        ggplot2::aes(x = .data$x, y = .data$y, colour = .data$desc_comb)
+      ggplot2::ggplot(
+        waffle,
+        ggplot2::aes(x = .data$x, y = .data$y, fill = .data$desc_comb)
       ) +
-        ggplot2::geom_raster(
-          ggplot2::aes(fill = .data$desc_comb),
-          alpha = 0.2
+        ggplot2::geom_tile(colour = "white", linewidth = 0.15) +
+        ggplot2::scale_fill_manual(
+          values = setNames(
+            tile_colors[as.character(levels(waffle$desc))],
+            levels(waffle$desc_comb)
+          )
         ) +
-        ggplot2::geom_text(
-          ggplot2::aes(label = .data$label),
-          family = "fontawesome-webfont",
-          size = 6,
-          key_glyph = "rect"
-        ) +
-        ggplot2::scale_colour_manual(values = waffle_colors, drop = FALSE) +
-        ggplot2::scale_fill_manual(values = waffle_colors, drop = FALSE) +
+        ggplot2::coord_equal(expand = FALSE) +
         ggplot2::labs(
-          title = "Out of 100 infected travellers:",
-          subtitle = waffle_subtitle
+          title = "Out of 1000 infected travellers:",
+          fill  = NULL
         ) +
-        ggplot2::coord_equal() +
-        ggplot2::theme_void() +
+        ggplot2::theme_void(base_size = 13) +
         ggplot2::theme(
-          axis.text = ggplot2::element_blank(),
-          axis.title = ggplot2::element_blank(),
-          axis.ticks = ggplot2::element_blank(),
-          legend.title = ggplot2::element_blank(),
           legend.position = "bottom",
-          plot.title = ggplot2::element_text(hjust = 0, size = 15),
-          plot.subtitle = ggplot2::element_text(hjust = 0, lineheight = 1.5),
-          # legend.key.size = unit(3, "line"),
-          legend.text = ggplot2::element_text(size = 12)
-        ) +
-        ggplot2::guides(color = ggplot2::guide_legend(ncol = 1))
-
-      waffle_plot
+          legend.text = ggplot2::element_text(size = 10),
+          plot.title = ggplot2::element_text(
+            size = 15, face = "bold",
+            margin = ggplot2::margin(b = 8)
+          ),
+          plot.margin = ggplot2::margin(12, 16, 12, 16)
+        )
     })
 
     output$densityplot <- shiny::renderPlot(expr = {
       period_plot_data <- nat_hist_periods()
 
-      period_plot_data <- dplyr::mutate(
-        period_plot_data,
-        severe_period =
-          .data$inf_period + .data$inc_period
-      ) %>%
+      period_colors <- c(
+        "Infection to onset"  = "#4E84C4",
+        "Onset to severe"     = "#E84040",
+        "Infection to severe" = "#52854C"
+      )
+
+      period_means <- period_plot_data %>%
+        dplyr::mutate(severe_period = .data$inc_period + .data$inf_period) %>%
         tidyr::pivot_longer(
-          names_to = "Period",
-          cols = dplyr::everything(),
-          values_to = "value"
+          names_to = "Period", cols = dplyr::everything(), values_to = "value"
         ) %>%
         dplyr::mutate(
           Period = factor(
             .data$Period,
-            levels = c(
-              "inc_period",
-              "inf_period",
-              "severe_period"
-            ),
-            labels = c(
-              "Infection to onset",
-              "Onset to severe",
-              "Infection to severe"
-            )
+            levels = c("inc_period", "inf_period", "severe_period"),
+            labels = c("Infection to onset", "Onset to severe", "Infection to severe")
+          )
+        ) %>%
+        dplyr::group_by(.data$Period) %>%
+        dplyr::summarise(mean = mean(.data$value), .groups = "drop")
+
+      period_plot_long <- period_plot_data %>%
+        dplyr::mutate(severe_period = .data$inc_period + .data$inf_period) %>%
+        tidyr::pivot_longer(
+          names_to = "Period", cols = dplyr::everything(), values_to = "value"
+        ) %>%
+        dplyr::mutate(
+          Period = factor(
+            .data$Period,
+            levels = c("inc_period", "inf_period", "severe_period"),
+            labels = c("Infection to onset", "Onset to severe", "Infection to severe")
           )
         )
 
-      period_plot <- ggplot2::ggplot(
-        data = period_plot_data,
-        ggplot2::aes(x = .data$value)
-      ) +
-        ggplot2::geom_density(
-          fill = "lightskyblue",
-          color = "lightskyblue",
-          alpha = 0.5
-        ) +
-        ggplot2::labs(x = "Time (days)") +
-        ggplot2::theme_minimal() +
-        ggplot2::ylab("Density") +
-        ggplot2::facet_grid(cols = ggplot2::vars(.data$Period)) +
+      ggplot2::ggplot(period_plot_long, ggplot2::aes(
+        x = .data$value,
+        fill = .data$Period,
+        colour = .data$Period
+      )) +
+        ggplot2::geom_density(alpha = 0.25, linewidth = 0.8) +
         ggplot2::geom_vline(
-          data = period_plot_data %>%
-            dplyr::group_by(.data$Period) %>%
-            dplyr::summarise(mean = mean(.data$value)),
-          ggplot2::aes(xintercept = .data$mean),
-          lty = 2
+          data = period_means,
+          ggplot2::aes(xintercept = .data$mean, colour = .data$Period),
+          linetype = "dashed", linewidth = 0.7
         ) +
-        ggplot2::labs(title = "Vertical lines represent mean time to event") +
-        ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5))
-
-      period_plot
+        ggplot2::scale_fill_manual(values = period_colors) +
+        ggplot2::scale_colour_manual(values = period_colors) +
+        ggplot2::facet_wrap(~ .data$Period, scales = "free_x", nrow = 1) +
+        ggplot2::labs(
+          x     = "Time (days)",
+          y     = "Density",
+          title = "Natural history delay distributions (dashed lines = means)"
+        ) +
+        ggplot2::theme_minimal(base_size = 12) +
+        ggplot2::theme(
+          legend.position = "none",
+          strip.text = ggplot2::element_text(face = "bold"),
+          panel.grid.minor = ggplot2::element_blank(),
+          plot.title = ggplot2::element_text(
+            hjust = 0.5, size = 11,
+            colour = "grey30"
+          )
+        )
     }, execOnResize = FALSE)
 
     output$waffle_plot <- shiny::renderUI({
@@ -400,14 +395,13 @@ run_app <- function() {
     })
 
     output$detailed_estimates <- shiny::renderTable(
-
       if (input$uncert == TRUE) {
-        travellers <- generate_travellers(input, i = rep(100, 200))
+        travellers <- generate_travellers(eff_input(), i = rep(100, 200))
         probs <- generate_probabilities(travellers)
 
         est_df <- data.frame(
           CI = apply(
-            X = probs[, -1],
+            X = probs[, -1] * 10,
             MARGIN = 2,
             FUN = make_ci_label
           )

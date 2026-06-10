@@ -1,0 +1,3 @@
+[submodule "submodules/bdbv-linelist-analysis"]
+	path = submodules/bdbv-linelist-analysis
+	url = https://github.com/epiforecasts/bdbv-linelist-analysis.git

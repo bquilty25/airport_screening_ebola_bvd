@@ -1,5 +1,5 @@
 <br/>
-Given the scenario set out in the panel, consider 100 infected air travellers who, if there was no screening, would arrive at their destination infected. This simulation calculates how many of those 100 travellers are likely to:
+Given the scenario set out in the panel, consider 1000 infected air travellers who, if there was no screening, would arrive at their destination infected. This simulation calculates how many of those 1000 travellers are likely to:
 
 * be detected via <b><span style="color:#66C2A5"> exit screening on departure</span></b>
 * present with <b><span style="color:#E78AC3">severe disease during travel</span></b>
