@@ -595,7 +595,11 @@ screen_grid <- tidyr::crossing(
     )
   )
 
-ggplot(screen_grid, aes(x = exit_s, y = entry_s, fill = prop_undetected)) +
+# filter to regular 10-point grid for plotting (86 kept in screen_grid for inline text)
+screen_grid_plot <- screen_grid |>
+  dplyr::filter(exit_s %in% seq(0, 100, by = 10), entry_s %in% seq(0, 100, by = 10))
+
+ggplot(screen_grid_plot, aes(x = exit_s, y = entry_s, fill = prop_undetected)) +
   geom_tile() +
   geom_point(
     data = tibble(x = SENS_EXIT, y = SENS_ENTRY),
