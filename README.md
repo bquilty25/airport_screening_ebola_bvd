@@ -8,6 +8,8 @@ An R package and Shiny app for estimating the effectiveness of airport screening
 
 For a 12-hour DRC/Uganda-to-UK connecting itinerary with 86% screening sensitivity at both departure and arrival, combined exit and entry screening is estimated to leave the majority of infected travellers undetected, primarily because most board their flight before symptom onset. Natural-history parameters are drawn from the Bayesian re-analysis of the 2012 Isiro outbreak line list (Funk & Abbott 2026). Full methods and results are available in the [accompanying report](https://bquilty25.github.io/airport_screening_ebola_bvd).
 
+> **Data note:** Natural-history parameters (incubation period, onset-to-hospitalisation delay) are derived from the 2007 Uganda and 2012 DRC BDBV outbreaks, not the current 2026 outbreak, as patient-level data from the current outbreak are not yet available. The epidemic doubling time range used in the growth-phase sensitivity analysis is estimated from the current outbreak (epiforecasts, 2026).
+
 ## Installation
 
 ```r
