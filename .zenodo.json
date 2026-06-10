@@ -1,0 +1,28 @@
+{
+  "title": "airport_screening_ebola_bvd: Effectiveness of airport screening for Bundibugyo ebolavirus",
+  "description": "An R package and Shiny app for estimating the effectiveness of airport screening at detecting infected travellers, adapted for Bundibugyo ebolavirus (BDBV) in the context of the 2026 DRC outbreak.",
+  "license": "MIT",
+  "upload_type": "software",
+  "creators": [
+    {
+      "name": "Quilty, Billy J",
+      "affiliation": "Charité – Universitätsmedizin Berlin; Centre for Mathematical Modelling of Infectious Diseases, London School of Hygiene & Tropical Medicine",
+      "orcid": "0000-0002-9094-3728"
+    }
+  ],
+  "related_identifiers": [
+    {
+      "relation": "isSupplementTo",
+      "identifier": "https://doi.org/10.2807/1560-7917.ES.2020.25.5.2000080",
+      "scheme": "url"
+    }
+  ],
+  "keywords": [
+    "airport screening",
+    "Bundibugyo ebolavirus",
+    "BDBV",
+    "infectious disease",
+    "R",
+    "Shiny"
+  ]
+}
