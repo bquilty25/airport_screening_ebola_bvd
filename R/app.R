@@ -57,12 +57,8 @@ run_app <- function() {
 "),
     shiny::fluidPage(
       shiny::titlePanel(
-        paste0(
-          "Effectiveness of airport screening at detecting ",
-          "infected travellers"
-        )
+        "Effectiveness of airport screening for Bundibugyo ebolavirus (BDBV)"
       ),
-      shiny::markdown(get_date_stamp()),
       shiny::sidebarLayout(
         shiny::sidebarPanel(
           shiny::sliderInput("dur.flight",
@@ -171,6 +167,27 @@ run_app <- function() {
             shiny::tabPanel(
               title = "References",
               shiny::includeMarkdown(references)
+            ),
+            shiny::tabPanel(
+              title = "About",
+              shiny::tags$p(
+                "This app was originally developed by Quilty et al. (2020) as part of the ",
+                "CMMID response to the COVID-19 pandemic. It has been adapted here for ",
+                "Bundibugyo ebolavirus (BDBV) using natural-history parameters from the ",
+                "2012 Isiro outbreak."
+              ),
+              shiny::tags$p(shiny::tags$strong("If you use this app, please cite:")),
+              shiny::tags$blockquote(
+                "Quilty BJ, Clifford S, CMMID nCoV Working Group, Flasche S, Eggo RM. ",
+                "Effectiveness of airport screening at detecting travellers infected with ",
+                "novel coronavirus (2019-nCoV). ",
+                shiny::tags$em("Euro Surveill."),
+                " 2020;25(5):pii=2000080. ",
+                shiny::tags$a(
+                  href = "https://doi.org/10.2807/1560-7917.ES.2020.25.5.2000080",
+                  "https://doi.org/10.2807/1560-7917.ES.2020.25.5.2000080"
+                )
+              )
             )
           )
         )
