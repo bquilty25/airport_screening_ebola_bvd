@@ -1,0 +1,18 @@
+\usepackage{lineno}
+\AtBeginDocument{\linenumbers}
+\usepackage[scaled]{helvet}
+\renewcommand{\familydefault}{\sfdefault}
+\usepackage[T1]{fontenc}
+\makeatletter
+\let\oldmaketitle\maketitle
+\renewcommand{\maketitle}{%
+  \oldmaketitle
+  \begin{center}
+  \small
+  Charit\'{e} -- Universit\"{a}tsmedizin Berlin\\
+  Centre for Mathematical Modelling of Infectious Diseases,\\
+  London School of Hygiene \& Tropical Medicine
+  \end{center}
+  \vspace{1em}
+}
+\makeatother

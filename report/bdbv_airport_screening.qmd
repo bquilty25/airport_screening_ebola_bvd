@@ -1,11 +1,11 @@
 ---
-title: "Effectiveness of airport screening for Bundibugyo ebolavirus: assessing the risk of undetected importation to the United Kingdom"
+title: "Estimating the effectiveness of syndromic screening at airports for Bundibugyo ebolavirus disease"
 author:
   - name: "Billy J Quilty"
     affiliations:
       - "Charité – Universitätsmedizin Berlin"
       - "Centre for Mathematical Modelling of Infectious Diseases, London School of Hygiene & Tropical Medicine"
-date: today
+date: ""
 format:
   html:
     toc: true
@@ -21,6 +21,8 @@ format:
     fig-width: 7
     fig-height: 4.5
     geometry: margin=2.5cm
+    linestretch: 2
+    include-in-header: header.tex
 execute:
   echo: false
   warning: false
@@ -35,31 +37,43 @@ library(patchwork)
 library(scales)
 library(knitr)
 library(kableExtra)
+library(qs)
 
-# Load the package functions
-devtools::load_all(here::here())
+# Load precomputed results (run report/precompute.R to regenerate)
+res <- qread(here::here("report", "precomputed.qs"))
 
-# Load BDBV posterior draws
-post <- read.csv(
-  here::here("data-raw", "bdbv_posterior_gamma.csv"),
-  check.names = FALSE
-)
+# Unpack objects
+pp           <- res$pp
+pt           <- res$pt
+pp_20        <- res$pp_20
+nh_df        <- res$nh_df
+fd_results   <- res$fd_results
+sens_grid    <- res$sens_grid
+gp_results   <- res$gp_results
+stable       <- res$stable
+screen_grid  <- res$screen_grid
+post         <- res$post
 
-# Parameters
-SEED          <- 20260619L
-N_DRAWS       <- 1000L
-SIMS_PER_DRAW <- 2000L
-FLIGHT_H      <- 12       # DRC/Uganda to UK via hub
-SENS_EXIT     <- 86
-SENS_ENTRY    <- 86
-PROP_ASY      <- 5
-MU_INC        <- 7.68     # BDBV incubation mean (days; Wamala et al. 2010, n=116)
-SIGMA_INC     <- 12.46    # BDBV incubation variance (days²; SD=3.53, Wamala 2010)
-INC_PRIOR_SD  <- 2.6      # between-study SD across 3 BDBV incubation estimates
-                           # Wamala 2010 (7.68d), MacNeil 2010 (6.3d), Kratz 2015 (11.3d)
-                           # sample SD = 2.58d (Nash et al. 2024 / epireview)
+# Unpack parameters
+SEED          <- res$params$SEED
+N_DRAWS       <- res$params$N_DRAWS
+SIMS_PER_DRAW <- res$params$SIMS_PER_DRAW
+FLIGHT_H      <- res$params$FLIGHT_H
+SENS_EXIT     <- res$params$SENS_EXIT
+SENS_ENTRY    <- res$params$SENS_ENTRY
+PROP_ASY      <- res$params$PROP_ASY
+MU_INC        <- res$params$MU_INC
+SIGMA_INC     <- res$params$SIGMA_INC
+INC_PRIOR_SD  <- res$params$INC_PRIOR_SD
+MU_OD         <- res$params$MU_OD
+SIGMA_OD      <- res$params$SIGMA_OD
+flight_durations  <- res$params$flight_durations
+doubling_times    <- res$params$doubling_times
+exit_sens_grid    <- res$params$exit_sens_grid
+entry_sens_grid   <- res$params$entry_sens_grid
+N_NH_DRAWS    <- 500L
 
-# Posterior summary helpers
+# Helper functions
 pct_fmt  <- function(x, d = 1) sprintf(paste0("%.", d, "f%%"), x * 100)
 days_fmt <- function(x, d = 1) sprintf(paste0("%.", d, "f days"), x)
 cri      <- function(x, d = 1, scale = 1) {
@@ -74,117 +88,85 @@ cri      <- function(x, d = 1, scale = 1) {
 
 ## Abstract {.unnumbered}
 
-We apply a stochastic simulation model to estimate the effectiveness of combined exit and entry airport screening for Bundibugyo ebolavirus (BDBV), using natural-history parameters from a Bayesian re-analysis of the 2012 Isiro outbreak. For a 12-hour DRC/Uganda-to-UK itinerary at 86% screening sensitivity, we estimate `r {probs <- calc_probs(dur.flight = FLIGHT_H, mu_inc = MU_INC, sigma_inc = SIGMA_INC, mu_inf = 4.03, sigma_inf = 13.72, sens.exit = SENS_EXIT, sens.entry = SENS_ENTRY, prop.asy = PROP_ASY, sims = 20000L, seed = SEED); sprintf("%.0f%%", 100 * probs$prop_undetected)}` of infected travellers would arrive undetected (95% CrI: `r {pp <- calc_probs_posterior(post, dur.flight = FLIGHT_H, mu_inc = MU_INC, sigma_inc = SIGMA_INC, inc_prior_sd = INC_PRIOR_SD, sens.exit = SENS_EXIT, sens.entry = SENS_ENTRY, prop.asy = PROP_ASY, sims_per_draw = SIMS_PER_DRAW, n_draws = N_DRAWS, seed = SEED); sprintf("%.0f–%.0f%%", 100 * quantile(pp$prop_undetected, 0.025), 100 * quantile(pp$prop_undetected, 0.975))}`). The dominant mechanism of failure is the incubation period: most infected travellers board their flight before symptom onset and are undetectable by any fever-based screen. This is compounded during active epidemic growth, when recently exposed — and therefore pre-symptomatic — cases are overrepresented among travellers. Airport screening cannot provide robust containment of BDBV importation and should be considered a supplementary measure alongside clinician awareness and rapid response capacity.
+We used a stochastic simulation model to estimate the effectiveness of combined exit and entry airport screening for Bundibugyo ebolavirus disease (BVD), using natural-history parameters from a Bayesian re-analysis of the 2012 Isiro outbreak. For a 12-hour international flight from DRC or Uganda at 86% screening sensitivity, we estimate `r sprintf("%.0f%%", 100 * median(pp$prop_undetected))` of infected travellers would arrive undetected (95% CrI: `r sprintf("%.0f\u2013%.0f%%", 100 * quantile(pp$prop_undetected, 0.025), 100 * quantile(pp$prop_undetected, 0.975))`). The main driver of this outcome is the relative duration of the the incubation period (approximately 7.7 days) and the onset-to-severe-disease interval (approximately 4 days): most infected travellers board before symptom onset and are undetectable by any syndromic screen, whilst those who are symptomatic progress rapidly to illness severe enough to preclude travel. This is compounded during active epidemic growth, when recently exposed (and therefore pre-symptomatic) cases are overrepresented among travellers. Syndromic airport screening offers limited protection against BVD spread via air travel, and should be complemented by outbreak control at source and strengthened clinical surveillance in receiving countries with high travel connectivity to affected areas.
 
 ---
 
 ::: {.callout-note}
-**Data note:** Natural-history parameters (incubation period, onset-to-hospitalisation delay) are derived from the 2007 Uganda and 2012 DRC BDBV outbreaks. Patient-level data from the current 2026 DRC outbreak are not yet available. The epidemic doubling time range used in the growth-phase sensitivity analysis is estimated from the current outbreak (epiforecasts, 2026).
+**Data note:** Natural-history parameters (incubation period, onset-to-severe-disease delay) are derived from the 2007 Uganda and 2012 DRC BVD outbreaks. Patient-level data from the current 2026 outbreak are not yet available. The epidemic doubling time range used in the growth-phase sensitivity analysis is estimated from the current outbreak (epiforecasts, 2026). The outbreak was declared a PHEIC on 17 May 2026 [@WHO2026PHEIC].
 :::
 
 ## Introduction
 
-Bundibugyo ebolavirus (BDBV) is one of six known ebolaviruses and was first identified during a 2007 outbreak in Bundibugyo district, Uganda, which caused 149 cases and 37 deaths [@Towner2008]. A second, larger outbreak occurred in Isiro, Haut-Uélé province, Democratic Republic of the Congo (DRC), between June and November 2012, resulting in 52 confirmed and probable cases and 28 deaths [@Rosello2015]. As of June 2026, an outbreak of BDBV in DRC has prompted renewed attention to the risk of international spread, including to high-income countries such as the United Kingdom, which maintain direct or connecting air links to the region.
+Bundibugyo ebolavirus (BDBV) is one of six known ebolaviruses, previously identified in outbreaks in Uganda (2007) [@Towner2008] and the Democratic Republic of the Congo (DRC; 2012) [@Rosello2015]. As of June 2026, an outbreak of Bundibugyo ebolavirus disease (BVD) affecting Ituri Province in DRC and with confirmed spread to Kampala, Uganda has been declared a Public Health Emergency of International Concern (PHEIC) by WHO [@WHO2026PHEIC]. Unlike previous Zaire ebolavirus outbreaks, no approved BVD-specific therapeutics or vaccines exist, and the outbreak is occurring against a backdrop of insecurity, high population mobility, and a large informal healthcare network. Together these features heighten concern about international spread via air travel.
 
-Airport screening — comprising thermal scanning, symptom questionnaires, and direct clinical assessment — was deployed extensively during the 2014–2016 West Africa Ebola epidemic and again during the 2018–2020 DRC outbreaks of Zaire ebolavirus [@Mabey2014]. Its effectiveness, however, is constrained by the natural history of infection: travellers who have been exposed but have not yet developed symptoms will not be febrile at the time of screening, and therefore will not be detected. Whether a traveller is symptomatic at departure or arrival depends on when they were exposed relative to their travel date, on the distribution of the incubation period (infection to symptom onset), and on the time from symptom onset to progression to severe, detectably ill disease.
+Syndromic airport screening (thermal scanning, symptom questionnaires, and direct clinical assessment) was deployed extensively during the 2014–2016 West Africa Ebola epidemic and again during the 2018–2020 DRC outbreaks of Zaire ebolavirus [@Mabey2014]. Its effectiveness, however, is constrained by the natural history of infection: travellers who have been exposed but have not yet developed symptoms will not be febrile at the time of screening, and therefore will not be detected. Whether a traveller is symptomatic at departure or arrival depends on when they were exposed relative to their travel date, on the distribution of the incubation period (infection to symptom onset), and on the time from symptom onset to progression to severe, detectably ill disease.
 
-For BDBV specifically, three published incubation period estimates exist. Wamala et al. (2010) [@Wamala2010] reported a mean of 7.68 days (SD 3.53; 95% CI 7.04--8.32; n = 116) from the 2007 Uganda outbreak. MacNeil et al. (2010) [@MacNeil2010] reported 6.3 days (95% CI 5.2--7.3; n = 24 contacts with confirmed exposure dates) from the same outbreak. Kratz et al. (2015) [@Kratz2015] reported 11.3 days (range 2--27; n = 3) from the 2012 Isiro DRC outbreak. The Nash et al. (2024) systematic review [@Nash2024] identified all three. The Isiro 2012 line list, the only publicly available BDBV line list, contains no exposure dates and was recently re-analysed using modern doubly-censored Bayesian methods to produce posterior distributions for the onset-to-admission and admission-to-death delays [@FunkAbbott2026]. We use these posterior estimates directly, propagating their uncertainty into our screening effectiveness projections.
+For BVD specifically, three published incubation period estimates exist and were identified in a recent systematic review [@Nash2024]. Wamala et al. (2010) [@Wamala2010] reported a mean of 7.68 days (SD 3.53; 95% CI 7.04--8.32; n = 116) from the 2007 Uganda outbreak. MacNeil et al. (2010) [@MacNeil2010] reported 6.3 days (95% CI 5.2--7.3; n = 24 contacts with confirmed exposure dates) from the same outbreak. Kratz et al. (2015) [@Kratz2015] reported 11.3 days (range 2--27; n = 3) from the 2012 Isiro DRC outbreak. 
 
-The primary route of concern is DRC or Uganda to the United Kingdom. Direct flights do not operate between these origins and the UK; travellers typically route via a European or Middle Eastern hub, giving a total travel time of approximately 12 hours. We model this default itinerary whilst also examining how screening effectiveness varies across a range of flight durations and epidemiological scenarios.
+Total flight durations from DRC or Uganda to international destinations typically range from approximately 10 to 16 hours depending on destination. We model a 12-hour flight as a representative default whilst examining how screening effectiveness varies across a range of flight durations and epidemiological scenarios.
 
 ## Methods
 
 ### Simulation model
 
-We used a stochastic individual-based simulation model to evaluate the probability that an infected traveller would be detected at (i) exit screening before departure, (ii) as severely ill during the flight, (iii) at entry screening on arrival, or (iv) remain undetected throughout. Full details of the model are given in Quilty et al. (2020) [@Quilty2020]; a brief summary follows.
+We used a stochastic individual-based simulation model to evaluate the probability that an infected traveller would be detected at (i) exit screening before departure, (ii) as severely ill during the flight, (iii) at entry screening on arrival, or (iv) remain undetected throughout.
 
-For each simulated traveller, an incubation period $t_{\text{inc}}$ and an onset-to-severe-disease interval $t_{\text{inf}}$ were drawn independently from Gamma distributions. The time at which a traveller commenced their flight relative to their infection was drawn uniformly from $[0, 2(t_{\text{inc}} + t_{\text{inf}})]$, so that travellers at all stages of their natural history — from pre-symptomatic to late-symptomatic — are represented in proportion to the expected exposure distribution.
+For each simulated traveller, an incubation period $t_{\text{inc}}$ and an onset-to-severe-disease interval $t_{\text{inf}}$ were drawn independently from Gamma distributions. The time at which a traveller commenced their flight relative to their infection was drawn uniformly from $[0,\, t_{\text{inc}} + t_{\text{inf}} + t_{\text{rec}}]$, where $t_{\text{rec}}$ is an individual-specific draw from the onset-to-death Gamma posterior (Funk \& Abbott 2026), used as a proxy for the onset-to-recovery interval for asymptomatic cases. Travellers hospitalised before their scheduled departure were excluded.
 
-Exit screening was assumed to detect any traveller who was symptomatic ($t_{\text{flight departure}} > t_{\text{inc}}$) with probability $p_{\text{exit}}$. Travellers who were not symptomatic at departure but became severely ill before arrival (i.e. $t_{\text{flight departure}} \le t_{\text{inc}}$ but $t_{\text{inc}} + t_{\text{inf}} < t_{\text{flight arrival}}$) were classified as severely ill during flight. Remaining symptomatic travellers — those who were symptomatic at arrival but not detected at exit — were subject to entry screening with probability $p_{\text{entry}}$.
-
-Travellers who were hospitalised before their scheduled departure were removed from the simulated cohort, consistent with the assumption that severely ill individuals are unlikely to travel.
-
-A proportion $\rho$ of all infections was assumed to be asymptomatic; these travellers remained undetected throughout.
+Exit screening was assumed to detect any traveller who was symptomatic ($t_{\text{flight departure}} > t_{\text{inc}}$) with probability $p_{\text{exit}}$; travellers who became severely ill during the flight or remained symptomatic on arrival were subject to entry screening with probability $p_{\text{entry}}$. A proportion $\rho$ of all infections was assumed to be asymptomatic and remained undetected throughout. Full details are given in Quilty et al. (2020) [@Quilty2020].
 
 ### Parameters
 
-```{r params_table}
+```{r tbl-params}
+#| tbl-cap: "Model parameters for the BVD default scenario."
 params_df <- tibble::tribble(
   ~Parameter,              ~Value,             ~Source,
-  "Flight duration",       "12 h (default)",   "DRC/Uganda to UK via hub",
+  "Flight duration",       "12 h (default)",   "DRC/Uganda via connecting hub (representative)",
   "Exit screening sensitivity",  "86%",         "Priest et al. 2011 (thermal image scanners)",
   "Entry screening sensitivity", "86%",         "Priest et al. 2011 (thermal image scanners)",
   "Proportion asymptomatic",     "5%",          "EVD literature (conservative)",
   "Incubation period mean",      "7.68 days (95% CI: 7.04\u20138.32)",
-                                  "Wamala et al. 2010 (2007 Uganda BDBV; n=116)",
-  "Incubation period variance",   "12.46 days\u00b2 (SD\u00b2 = 3.53\u00b2)",
+                                  "Wamala et al. 2010 (2007 Uganda BVD; n=116)",
+  "Incubation period variance",   "12.46 days\u00b2 (SD = 3.53 days)",
                                   "Wamala et al. 2010",
   "Between-estimate incubation SD", "2.6 days (prior SD)",
-                                  "Sample SD across 3 BDBV estimates (Nash 2024 / epireview)",
-  "Onset \u2192 admission mean",   "4.03 days (95% CrI: 3.08\u20135.46)",
+                                  "Sample SD across 3 BVD incubation estimates (Nash 2024 / epireview)",
+  "Onset \u2192 severe disease mean",   "4.03 days (95% CrI: 3.08\u20135.46)",
                                               "Funk & Abbott 2026 posterior median",
-  "Onset \u2192 admission variance", "13.72 days\u00b2",
+  "Onset \u2192 severe disease variance", "13.72 days\u00b2",
                                               "Funk & Abbott 2026 posterior median"
 )
 
-kable(params_df, caption = "Model parameters for the BDBV default scenario.", booktabs = TRUE) |>
-  kable_styling(font_size = 10, latex_options = "hold_position")
+kable(params_df, booktabs = TRUE) |>
+  kable_styling(font_size = 9, latex_options = c("hold_position", "scale_down")) |>
+  column_spec(1, width = "4cm") |>
+  column_spec(2, width = "4cm") |>
+  column_spec(3, width = "6cm")
 ```
 
-The onset-to-admission (i.e., onset to severe disease) parameters for BDBV were derived from the Bayesian re-analysis of the 2012 Isiro line list by Funk & Abbott (2026) [@FunkAbbott2026], fitting Gamma distributions to doubly-interval-censored delay data. This analysis is available as a git submodule at `submodules/bdbv-linelist-analysis`. The model selected the Gamma family on the basis of WAIC (lowest WAIC = 792.4 versus 793.6 for Weibull and 652,838 for LogNormal). The posterior median mean was `r days_fmt(median(post$mean_oa))` days (95% CrI: `r sprintf("%.2f\u2013%.2f", quantile(post$mean_oa, 0.025), quantile(post$mean_oa, 0.975))`) and the posterior median SD was `r days_fmt(median(post$sd_oa))` days (95% CrI: `r sprintf("%.2f\u2013%.2f", quantile(post$sd_oa, 0.025), quantile(post$sd_oa, 0.975))`), corresponding to a Gamma shape of `r sprintf("%.2f", median(post$shape_oa))` and scale of `r sprintf("%.2f", median(post$scale_oa))`.
+Model parameters are listed in @tbl-params. The Isiro 2012 line list, the only publicly available BVD line list, contains no exposure dates and was re-analysed using doubly-censored Bayesian methods by Funk & Abbott (2026) [@FunkAbbott2026], fitting Gamma distributions to the onset-to-severe-disease and onset-to-death delays. The posterior median onset-to-severe-disease mean was `r days_fmt(median(post$mean_oa))` (95% CrI: `r sprintf("%.2f\u2013%.2f", quantile(post$mean_oa, 0.025), quantile(post$mean_oa, 0.975))` days) and the posterior median SD was `r days_fmt(median(post$sd_oa))` (95% CrI: `r sprintf("%.2f\u2013%.2f", quantile(post$sd_oa, 0.025), quantile(post$sd_oa, 0.975))` days), corresponding to a Gamma shape of `r sprintf("%.2f", median(post$shape_oa))` and scale of `r sprintf("%.2f", median(post$scale_oa))`.
 
-Three published BDBV-specific incubation period estimates exist: Wamala et al. (2010) [@Wamala2010] (mean 7.68 days, SD 3.53, 95% CI 7.04--8.32, n = 116, Uganda), MacNeil et al. (2010) [@MacNeil2010] (mean 6.3 days, 95% CI 5.2--7.3, n = 24, Uganda), and Kratz et al. (2015) [@Kratz2015] (median 11.3 days, range 2--27, n = 3, DRC). All three are identified in the Nash et al. (2024) systematic review [@Nash2024]. We used the Wamala estimate as the primary value owing to the largest sample size and direct SD estimate. The between-study standard deviation across the three estimates (sample SD 2.6 days) was used as the spread of the incubation prior. Uncertainty in the incubation period was propagated by sampling the incubation mean on each posterior draw from a Normal prior with mean 7.68 days and SD 2.6 days (truncated above 0.5 days), then scaling the variance to preserve the coefficient of variation.
+The three published BVD-specific incubation period estimates are described in the Introduction [@Wamala2010; @MacNeil2010; @Kratz2015; @Nash2024]. We used the Wamala et al. (2010) estimate as the primary value owing to the largest sample size, and propagated between-study uncertainty using a Normal prior on the incubation mean (mean 7.68 days, SD 2.6 days, truncated above 0.5 days), scaling the variance to preserve the coefficient of variation. This between-study SD of 2.6 days is the sample standard deviation of three point estimates (7.68, 6.3, and 11.3 days), one of which (Kratz et al. 2015) rests on only three cases. A sample SD from three studies carries considerable uncertainty and should be interpreted as an approximate guide to the between-study spread rather than a reliable prior variance; readers should consult the incubation period sensitivity analysis (@fig-sensitivity) across the relevant range.
 
 ### Uncertainty propagation
 
-For each of `r N_DRAWS` posterior draws sampled at random from `posterior_gamma.csv`, we ran the simulation with `r format(SIMS_PER_DRAW, big.mark = ",")` simulated travellers. On each draw, the onset-to-admission delay was taken from the BDBV posterior (draw-specific Gamma mean and variance from the Funk & Abbott 2026 analysis), and the incubation period mean was drawn from a Normal prior with mean 7.68 days and SD 2.6 days (between-study spread across three BDBV estimates [@Wamala2010; @MacNeil2010; @Kratz2015]), with variance rescaled to preserve the coefficient of variation.
+For each of `r N_DRAWS` posterior draws sampled at random from `bdbv_posterior_gamma.csv`, we ran the simulation with `r format(SIMS_PER_DRAW, big.mark = ",")` simulated travellers. On each draw, the onset-to-severe-disease delay was taken from the BDBV posterior (draw-specific Gamma mean and variance from the Funk & Abbott 2026 analysis), and the incubation period mean was drawn from the Normal prior described above, with variance rescaled to preserve the coefficient of variation.
 
 ### Sensitivity analyses
 
-Four sensitivity analyses were conducted. First, we examined how the proportion undetected varied across flight durations of 1 to 20 hours, with full posterior uncertainty. Second, we explored the joint effect of the proportion of asymptomatic infection (0 to 60%) and the mean incubation period (1 to 14 days) on the proportion undetected for the default 12-hour flight using posterior-median natural-history parameters. Third, to address the limitation that the baseline model assumes a stable epidemic, we re-ran the posterior analysis across a range of epidemic doubling times (4.5 to 44 days, spanning the 90% credible interval from the epiforecasts BDBV 2026 growth-rate estimates [@FunkAbbott2026]) using the truncated-exponential exposure-time distribution described by Gostic et al. [@Gostic2015; @Gostic2020]. Fourth, we varied exit and entry screening sensitivity independently from 0 to 100% to quantify the marginal contribution of each screening layer.
+Four sensitivity analyses were conducted. First, we examined how the proportion undetected varied across flight durations of 1 to 20 hours, with full posterior uncertainty. Second, we explored the joint effect of the proportion of asymptomatic infection (0 to 60%) and the mean incubation period (1 to 14 days) on the proportion undetected for the default 12-hour flight using posterior-median natural-history parameters. Third, to address the limitation that the baseline model assumes a stable epidemic, we re-ran the posterior analysis across epidemic doubling times of 4.5 to 44 days (spanning the 90% credible interval from the epiforecasts BVD 2026 growth-rate estimates [@FunkAbbott2026]). In a growing epidemic, recently infected individuals are overrepresented among travellers relative to those infected further in the past, so the uniform exposure-time assumption underestimates the pre-symptomatic fraction. Following Gostic et al. [@Gostic2015; @Gostic2020], we replaced the uniform draw on $[0, T_{\max}]$ with a truncated-exponential distribution. Each doubling time $T_d$ was converted to an exponential growth rate $r = \ln 2 / T_d$, and the time since infection for each simulated traveller was drawn by inverse-CDF sampling: $\tau = -\ln\!\bigl(1 - U\,(1 - e^{-r\,T_{\max}})\bigr) / r$, where $U \sim \mathrm{Uniform}(0,1)$ and $T_{\max} = 2(t_{\text{inc}} + t_{\text{inf}})$. This weights the exposure distribution towards recent infections, as expected under exponential growth. Fourth, we varied exit and entry screening sensitivity independently from 0 to 100% to quantify the marginal contribution of each screening layer.
 
 ### Software
 
-All analyses were performed in R (version ≥ 4.1; R Core Team 2024). The simulation model is implemented in the `airportscreening` R package, available at [github.com/bquilty25/airport_screening_ebola_bvd](https://github.com/bquilty25/airport_screening_ebola_bvd). Figures were produced using `ggplot2` [@Wickham2016]. The BDBV parameter submodule uses Julia and Turing.jl.
+All analyses were performed in R (version ≥ 4.1; R Core Team 2024). The simulation model is implemented in the `airportscreening` R package, available at [github.com/bquilty25/airport_screening_ebola_bvd](https://github.com/bquilty25/airport_screening_ebola_bvd). 
 
 ## Results
-
-```{r run_posterior}
-# Run posterior uncertainty analysis — propagates both onset->hosp (BDBV posterior)
-# and incubation (BDBV prior, mean 7.68 d, SD 2.6 d) simultaneously
-pp <- calc_probs_posterior(
-  post,
-  dur.flight    = FLIGHT_H,
-  mu_inc        = MU_INC,
-  sigma_inc     = SIGMA_INC,
-  inc_prior_sd  = INC_PRIOR_SD,
-  sens.exit     = SENS_EXIT,
-  sens.entry    = SENS_ENTRY,
-  prop.asy      = PROP_ASY,
-  sims_per_draw = SIMS_PER_DRAW,
-  n_draws       = N_DRAWS,
-  seed          = SEED
-)
-
-# Point estimate using posterior median parameters
-pt <- calc_probs(
-  dur.flight = FLIGHT_H,
-  mu_inc     = MU_INC,
-  sigma_inc  = SIGMA_INC,
-  mu_inf     = median(post$mean_oa),
-  sigma_inf  = median(post$sd_oa)^2,
-  sens.exit  = SENS_EXIT,
-  sens.entry = SENS_ENTRY,
-  prop.asy   = PROP_ASY,
-  sims       = 50000L,
-  seed       = SEED
-)
-```
 
 ### Detection outcomes at 12 hours
 
 ```{r tbl-outcomes}
-#| tbl-cap: !expr paste0("Estimated screening outcomes for 100 infected BDBV travellers on a ", FLIGHT_H, "-hour flight from DRC/Uganda to the UK, with ", SENS_EXIT, "\\% sensitivity at exit and ", SENS_ENTRY, "\\% sensitivity at entry. Values are percentages with 95\\% credible intervals.")
+#| tbl-cap: !expr paste0("Estimated screening outcomes for 100 infected BDBV travellers on a ", FLIGHT_H, "-hour connecting flight from DRC or Uganda, with ", SENS_EXIT, "\\% sensitivity at exit and ", SENS_ENTRY, "\\% sensitivity at entry. Values are percentages with 95\\% credible intervals.")
 outcomes_df <- tibble::tribble(
   ~`Detection outcome`,      ~`Estimate (95% CrI)`,
   "Detected at exit screening",
@@ -204,34 +186,10 @@ kable(
   kable_styling(font_size = 10, latex_options = "hold_position")
 ```
 
-For a 12-hour DRC-or-Uganda-to-UK flight with 86% screening sensitivity at both departure and arrival, we estimate that `r sprintf("%.1f%%", 100 * median(pp$prop_symp_at_exit))` (95% CrI: `r sprintf("%.1f\u2013%.1f%%", 100 * quantile(pp$prop_symp_at_exit, 0.025), 100 * quantile(pp$prop_symp_at_exit, 0.975))`) of infected travellers would be detected at exit screening, `r sprintf("%.1f%%", 100 * median(pp$prop_sev_at_entry))` (95% CrI: `r sprintf("%.1f\u2013%.1f%%", 100 * quantile(pp$prop_sev_at_entry, 0.025), 100 * quantile(pp$prop_sev_at_entry, 0.975))`) would become severely ill during the flight, and `r sprintf("%.1f%%", 100 * median(pp$prop_symp_at_entry))` (95% CrI: `r sprintf("%.1f\u2013%.1f%%", 100 * quantile(pp$prop_symp_at_entry, 0.025), 100 * quantile(pp$prop_symp_at_entry, 0.975))`) would be detected at entry screening (@tbl-outcomes). In total, `r sprintf("%.1f%%", 100 * median(pp$prop_undetected))` (95% CrI: `r sprintf("%.1f\u2013%.1f%%", 100 * quantile(pp$prop_undetected, 0.025), 100 * quantile(pp$prop_undetected, 0.975))`) of infected travellers would arrive undetected.
+For a 12-hour connecting flight from DRC or Uganda with 86% screening sensitivity at both departure and arrival, we estimate that `r sprintf("%.1f%%", 100 * median(pp$prop_symp_at_exit))` (95% CrI: `r sprintf("%.1f\u2013%.1f%%", 100 * quantile(pp$prop_symp_at_exit, 0.025), 100 * quantile(pp$prop_symp_at_exit, 0.975))`) of infected travellers would be detected at exit screening, `r sprintf("%.1f%%", 100 * median(pp$prop_sev_at_entry))` (95% CrI: `r sprintf("%.1f\u2013%.1f%%", 100 * quantile(pp$prop_sev_at_entry, 0.025), 100 * quantile(pp$prop_sev_at_entry, 0.975))`) would become severely ill during the flight — arriving at the destination airport requiring emergency medical management and representing a distinct public-health import risk even if removed from the "undetected" count — and `r sprintf("%.1f%%", 100 * median(pp$prop_symp_at_entry))` (95% CrI: `r sprintf("%.1f\u2013%.1f%%", 100 * quantile(pp$prop_symp_at_entry, 0.025), 100 * quantile(pp$prop_symp_at_entry, 0.975))`) would be detected at entry screening (@tbl-outcomes). In total, `r sprintf("%.1f%%", 100 * median(pp$prop_undetected))` (95% CrI: `r sprintf("%.1f\u2013%.1f%%", 100 * quantile(pp$prop_undetected, 0.025), 100 * quantile(pp$prop_undetected, 0.975))`) of infected travellers would arrive undetected (@fig-natural-history).
 
 ```{r fig-natural-history}
-#| fig-cap: "Posterior distributions of natural-history period durations for BDBV. Each panel shows densities from 500 joint draws: the onset-to-hospitalisation delay is drawn from the Bayesian BDBV posterior (Funk & Abbott 2026); the incubation period (infection to symptom onset) is drawn from a Normal prior on the mean (7.68 +/- 2.6 days, truncated > 0.5) with CV preserved. Shaded ribbons show 50% (dark) and 95% (light) credible intervals across draws."
-
-set.seed(SEED)
-N_NH_DRAWS <- 500L
-cv2_inc    <- SIGMA_INC / MU_INC^2
-idx_draws  <- sample.int(nrow(post), N_NH_DRAWS)
-
-nh_df <- purrr::map_dfr(seq_len(N_NH_DRAWS), function(i) {
-  k        <- idx_draws[i]
-  # onset -> hospitalisation from BDBV posterior
-  mu_oa    <- post$mean_oa[k]
-  var_oa   <- post$sd_oa[k]^2
-  # incubation period from EVD prior (same perturbation as calc_probs_posterior)
-  mu_inc_k    <- max(0.5, rnorm(1L, mean = MU_INC, sd = INC_PRIOR_SD))
-  sigma_inc_k <- cv2_inc * mu_inc_k^2
-  n_samp <- 500L
-  tibble(
-    draw_i     = i,
-    incu       = rgamma(n_samp, shape = mu_inc_k^2 / sigma_inc_k,
-                        rate  = mu_inc_k / sigma_inc_k),
-    onset_hosp = rgamma(n_samp, shape = mu_oa^2 / var_oa,
-                        rate  = mu_oa / var_oa)
-  ) |>
-    mutate(infection_hosp = incu + onset_hosp)
-})
+#| fig-cap: "Posterior distributions of natural-history period durations for BVD. Each panel shows densities from 500 joint draws: the onset-to-hospitalisation and onset-to-death delays are drawn from the Bayesian BVD posterior (Funk & Abbott 2026); the incubation period (infection to symptom onset) is drawn from a Normal prior on the mean (7.68 days, SD 2.6 days, truncated > 0.5) with CV preserved (Gamma shape fixed at 4.73). Shaded ribbons show 50% (dark) and 95% (light) pointwise credible bands across the 500 density curves; the wide light ribbon for the incubation period reflects draws with means as low as ~2 days at the 2.5th percentile of the prior. The onset-to-hospitalisation distribution has shape ~1.2 (nearly exponential), reflecting the limited information in the Isiro 2012 line list."
 
 density_summary <- function(vals_col, period_label, n_grid = 200) {
   xlim <- quantile(vals_col, c(0, 0.995))
@@ -242,15 +200,17 @@ density_summary <- function(vals_col, period_label, n_grid = 200) {
   })
 }
 
-dens_incu  <- density_summary(nh_df$incu,          "Incubation\n(infection -> onset)")
-dens_oa    <- density_summary(nh_df$onset_hosp,    "Onset -> hospitalisation")
-dens_total <- density_summary(nh_df$infection_hosp, "Infection -> hospitalisation")
+dens_incu  <- density_summary(nh_df$incu,          "Incubation\n(infection \u2192 onset)")
+dens_oa    <- density_summary(nh_df$onset_hosp,    "Onset \u2192 hospitalisation")
+dens_od    <- density_summary(nh_df$onset_death,   "Onset \u2192 death")
+dens_total <- density_summary(nh_df$infection_hosp, "Infection \u2192 hospitalisation")
 
-dens_ribbon <- bind_rows(dens_incu, dens_oa, dens_total) |>
+dens_ribbon <- bind_rows(dens_incu, dens_oa, dens_od, dens_total) |>
   mutate(period = factor(period, levels = c(
-    "Incubation\n(infection -> onset)",
-    "Onset -> hospitalisation",
-    "Infection -> hospitalisation"
+    "Incubation\n(infection \u2192 onset)",
+    "Onset \u2192 hospitalisation",
+    "Infection \u2192 hospitalisation",
+    "Onset \u2192 death"
   ))) |>
   group_by(period, x) |>
   summarise(
@@ -263,9 +223,10 @@ dens_ribbon <- bind_rows(dens_incu, dens_oa, dens_total) |>
   )
 
 period_cols <- c(
-  "Incubation\n(infection -> onset)"  = "#4E84C4",
-  "Onset -> hospitalisation"          = "#E84040",
-  "Infection -> hospitalisation"      = "#52854C"
+  "Incubation\n(infection \u2192 onset)"  = "#4E84C4",
+  "Onset \u2192 hospitalisation"          = "#E84040",
+  "Onset \u2192 death"                    = "#B05000",
+  "Infection \u2192 hospitalisation"      = "#52854C"
 )
 
 ggplot(dens_ribbon, aes(x = x, colour = period, fill = period)) +
@@ -287,27 +248,7 @@ ggplot(dens_ribbon, aes(x = x, colour = period, fill = period)) +
 ### Effect of flight duration on detection probability
 
 ```{r fig-flight-duration}
-#| fig-cap: "Detection probabilities as a function of flight duration, with uncertainty propagated across 1,000 posterior draws of the BDBV onset-to-hospitalisation delay. Ribbons show 50% (dark) and 95% (light) credible intervals. The vertical dashed line marks 12 hours, the approximate DRC/Uganda-to-UK connecting travel time."
-
-flight_durations <- c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20)
-
-set.seed(SEED)
-fd_results <- purrr::map_dfr(flight_durations, function(h) {
-  pp_h <- calc_probs_posterior(
-    post,
-    dur.flight    = h,
-    mu_inc        = MU_INC,
-    sigma_inc     = SIGMA_INC,
-    inc_prior_sd  = INC_PRIOR_SD,
-    sens.exit     = SENS_EXIT,
-    sens.entry    = SENS_ENTRY,
-    prop.asy      = PROP_ASY,
-    sims_per_draw = 1000L,
-    n_draws       = 400L,
-    seed          = SEED + h
-  ) |>
-    mutate(flight_h = h)
-})
+#| fig-cap: "Detection probabilities as a function of flight duration, with uncertainty propagated across 1,000 posterior draws of the BVD onset-to-hospitalisation delay. Ribbons show 50% (dark) and 95% (light) credible intervals. The vertical dashed line marks 12 hours, the approximate DRC/Uganda connecting travel time to international destinations."
 
 fd_summary <- fd_results |>
   group_by(flight_h) |>
@@ -353,8 +294,6 @@ ggplot(fd_summary, aes(x = flight_h, colour = outcome, fill = outcome)) +
   geom_line(aes(y = med), linewidth = 0.9) +
   geom_vline(xintercept = FLIGHT_H, linetype = "dashed",
              colour = "grey40", linewidth = 0.6) +
-  annotate("text", x = FLIGHT_H + 0.3, y = 0.02, hjust = 0,
-           label = "DRC/Uganda -> UK", size = 3.2, colour = "grey40") +
   scale_y_continuous(labels = percent_format(accuracy = 1)) +
   scale_colour_manual(values = outcome_cols) +
   scale_fill_manual(values = outcome_cols) +
@@ -370,12 +309,14 @@ ggplot(fd_summary, aes(x = flight_h, colour = outcome, fill = outcome)) +
   )
 ```
 
-As flight duration increases, the probability of detecting an infected traveller at entry screening rises owing to progression of disease during travel (@fig-flight-duration). For the 12-hour DRC-to-UK scenario, combined exit and entry screening is estimated to detect `r sprintf("%.1f%%", 100 * (1 - median(pp$prop_undetected)))` (95% CrI: `r sprintf("%.1f\u2013%.1f%%", 100 * (1 - quantile(pp$prop_undetected, 0.975)), 100 * (1 - quantile(pp$prop_undetected, 0.025)))`) of infected travellers, leaving `r sprintf("%.1f%%", 100 * median(pp$prop_undetected))` undetected. Even for a 20-hour flight — representative of the longest possible single-airline connection — the proportion undetected remains `r {pp_20 <- calc_probs_posterior(post, dur.flight = 20, mu_inc = MU_INC, sigma_inc = SIGMA_INC, inc_prior_sd = INC_PRIOR_SD, sens.exit = SENS_EXIT, sens.entry = SENS_ENTRY, prop.asy = PROP_ASY, sims_per_draw = 1000L, n_draws = 400L, seed = SEED); sprintf("%.1f%%", 100 * median(pp_20$prop_undetected))}` (95% CrI: `r sprintf("%.1f\u2013%.1f%%", 100 * quantile(pp_20$prop_undetected, 0.025), 100 * quantile(pp_20$prop_undetected, 0.975))`).
+As flight duration increases, the probability of detecting an infected traveller at entry screening rises owing to progression of disease during travel (@fig-flight-duration). For the 12-hour connecting itinerary, combined exit and entry screening is estimated to detect `r sprintf("%.1f%%", 100 * (1 - median(pp$prop_undetected)))` (95% CrI: `r sprintf("%.1f\u2013%.1f%%", 100 * (1 - quantile(pp$prop_undetected, 0.975)), 100 * (1 - quantile(pp$prop_undetected, 0.025)))`) of infected travellers, leaving `r sprintf("%.1f%%", 100 * median(pp$prop_undetected))` undetected. Even for a 20-hour flight (the longest typical single-airline connection), the proportion undetected remains `r sprintf("%.1f%%", 100 * median(pp_20$prop_undetected))` (95% CrI: `r sprintf("%.1f\u2013%.1f%%", 100 * quantile(pp_20$prop_undetected, 0.025), 100 * quantile(pp_20$prop_undetected, 0.975))`).
 
 ### Detection outcome breakdown
 
+Exit screening accounts for the largest share of detected cases; severely ill during flight and entry-detected cases together represent a small fraction, reflecting the short window between symptom onset and severe disease relative to the flight duration (@fig-stacked-bar).
+
 ```{r fig-stacked-bar}
-#| fig-cap: "Estimated number of detected and undetected infected travellers per 100 infected travellers departing DRC or Uganda for the UK, stratified by detection outcome, with 95% credible intervals (whiskers)."
+#| fig-cap: "Estimated number of detected and undetected infected travellers per 100 infected travellers departing DRC or Uganda on a 12-hour connecting itinerary, stratified by detection outcome, with 95% credible intervals (whiskers)."
 
 bar_df <- pp |>
   summarise(
@@ -425,32 +366,7 @@ ggplot(bar_df, aes(x = outcome, y = med, fill = outcome)) +
 ### Sensitivity analysis: asymptomatic proportion and incubation period
 
 ```{r fig-sensitivity}
-#| fig-cap: "Sensitivity analysis: proportion of infected travellers undetected as a function of the mean incubation period (x-axis) and proportion of asymptomatic infection (y-axis), for a 12-hour flight with posterior-median BDBV onset-to-hospitalisation parameters. The star marks the primary BDBV scenario (mean incubation 7.68 days, 5% asymptomatic). Full uncertainty propagation across the incubation period is shown in the main analysis."
-
-inc_means   <- seq(1, 14, by = 1)
-asy_percents <- seq(0, 60, by = 5)
-
-set.seed(SEED)
-sens_grid <- tidyr::crossing(
-  mu_inc_s  = inc_means,
-  prop_asy_s = asy_percents
-) |>
-  mutate(
-    prop_undetected = purrr::map2_dbl(
-      mu_inc_s, prop_asy_s,
-      ~ calc_probs(
-        dur.flight = FLIGHT_H,
-        mu_inc     = .x,
-        sigma_inc  = SIGMA_INC,
-        mu_inf     = median(post$mean_oa),
-        sigma_inf  = median(post$sd_oa)^2,
-        sens.exit  = SENS_EXIT,
-        sens.entry = SENS_ENTRY,
-        prop.asy   = .y,
-        sims       = 5000L
-      )$prop_undetected
-    )
-  )
+#| fig-cap: "Sensitivity analysis: proportion of infected travellers undetected as a function of the mean incubation period (x-axis) and proportion of asymptomatic infection (y-axis), for a 12-hour flight with posterior-median BVD onset-to-hospitalisation parameters. The star marks the primary BVD scenario (mean incubation 7.68 days, 5% asymptomatic). Full uncertainty propagation across the incubation period is shown in the main analysis."
 
 ggplot(sens_grid, aes(x = mu_inc_s, y = prop_asy_s, fill = prop_undetected)) +
   geom_tile() +
@@ -475,49 +391,12 @@ ggplot(sens_grid, aes(x = mu_inc_s, y = prop_asy_s, fill = prop_undetected)) +
   theme(panel.grid = element_blank())
 ```
 
-The primary driver of the undetected fraction is the incubation period (@fig-sensitivity): even at the conservative BDBV default of 5% asymptomatic infection, the proportion undetected ranges from `r {s_sub <- sens_grid |> filter(prop_asy_s == PROP_ASY); sprintf("%.0f–%.0f%%", 100 * min(s_sub$prop_undetected), 100 * max(s_sub$prop_undetected))}` across incubation periods of 1–14 days, with longer incubation periods allowing more travellers to depart before symptom onset. Truly asymptomatic EVD infection is rare, but paucisymptomatic presentations that fail to trigger fever-based screening cannot be excluded. If the asymptomatic fraction were as high as 40%, the undetected fraction would rise to `r {s_sub40 <- sens_grid |> filter(prop_asy_s == 40); sprintf("%.0f–%.0f%%", 100 * min(s_sub40$prop_undetected), 100 * max(s_sub40$prop_undetected))}` across the same incubation range, but this is considered an unlikely upper bound for BDBV.
+The primary driver of the undetected fraction is the incubation period (@fig-sensitivity): even at the conservative BVD default of 5% asymptomatic infection, the proportion undetected ranges from `r {s_sub <- sens_grid |> filter(prop_asy_s == PROP_ASY); sprintf("%.0f–%.0f%%", 100 * min(s_sub$prop_undetected), 100 * max(s_sub$prop_undetected))}` across incubation periods of 1–14 days, with longer incubation periods allowing more travellers to depart before symptom onset. Truly asymptomatic EVD infection is rare, but paucisymptomatic presentations that fail to trigger syndromic screening cannot be excluded. If the asymptomatic fraction were as high as 40%, the undetected fraction would rise to `r {s_sub40 <- sens_grid |> filter(prop_asy_s == 40); sprintf("%.0f–%.0f%%", 100 * min(s_sub40$prop_undetected), 100 * max(s_sub40$prop_undetected))}` across the same incubation range, but this is considered an unlikely upper bound for BVD.
 
 ### Sensitivity analysis: epidemic growth phase
 
 ```{r fig-growth-phase}
-#| fig-cap: "Effect of epidemic doubling time on the proportion of infected travellers going undetected. Each point shows the median across 500 posterior draws; ribbons show 50% (dark) and 95% (light) credible intervals. The shaded band marks the 90% credible interval for the initial doubling time of the current BDBV outbreak (13.8–22.8 days; epiforecasts, 2026). The rightmost marker (dashed vertical) represents a stable epidemic (growth rate = 0; uniform exposure distribution)."
-
-doubling_times <- c(4.5, 6, 8, 10, 13.8, 16, 18.3, 22.8, 28, 36, 44)
-
-set.seed(SEED)
-gp_results <- purrr::map_dfr(doubling_times, function(td) {
-  r <- log(2) / td
-  calc_probs_posterior(
-    post,
-    dur.flight    = FLIGHT_H,
-    mu_inc        = MU_INC,
-    sigma_inc     = SIGMA_INC,
-    inc_prior_sd  = INC_PRIOR_SD,
-    sens.exit     = SENS_EXIT,
-    sens.entry    = SENS_ENTRY,
-    prop.asy      = PROP_ASY,
-    growth_rate   = r,
-    sims_per_draw = 1000L,
-    n_draws       = 500L,
-    seed          = SEED + round(td * 10)
-  ) |> mutate(doubling_time = td)
-})
-
-# also compute stable epidemic (growth_rate = 0)
-stable <- calc_probs_posterior(
-  post,
-  dur.flight    = FLIGHT_H,
-  mu_inc        = MU_INC,
-  sigma_inc     = SIGMA_INC,
-  inc_prior_sd  = INC_PRIOR_SD,
-  sens.exit     = SENS_EXIT,
-  sens.entry    = SENS_ENTRY,
-  prop.asy      = PROP_ASY,
-  growth_rate   = 0,
-  sims_per_draw = 1000L,
-  n_draws       = 500L,
-  seed          = SEED
-) |> mutate(doubling_time = NA_real_)
+#| fig-cap: "Effect of epidemic doubling time on the proportion of infected travellers going undetected. Each point shows the median across 500 posterior draws; ribbons show 50% (dark) and 95% (light) credible intervals. The shaded band marks the 90% credible interval for the initial doubling time of the current BVD outbreak (13.8–22.8 days; epiforecasts, 2026). The rightmost marker (dashed vertical) represents a stable epidemic (growth rate = 0; uniform exposure distribution)."
 
 gp_summary <- gp_results |>
   group_by(doubling_time) |>
@@ -549,8 +428,8 @@ ggplot(gp_summary, aes(x = doubling_time)) +
   geom_point(aes(y = med), colour = "#FC8D62", size = 2.5) +
   geom_hline(yintercept = stable_sum$med,
              linetype = "dashed", colour = "grey40", linewidth = 0.7) +
-  annotate("text", x = max(doubling_times) - 1, y = stable_sum$med + 0.015,
-           label = "Stable epidemic", size = 3, colour = "grey40", hjust = 1) +
+  annotate("text", x = max(doubling_times) - 1, y = stable_sum$med - 0.015,
+           label = "Stable epidemic", size = 3, colour = "grey40", hjust = 1, vjust = 1) +
   scale_y_continuous(
     labels = percent_format(accuracy = 1),
     limits = c(0, 1)
@@ -563,39 +442,13 @@ ggplot(gp_summary, aes(x = doubling_time)) +
   theme(panel.grid.minor = element_blank())
 ```
 
-The proportion of infected travellers going undetected increases as the epidemic doubling time shortens (@fig-growth-phase). Under the initial epiforecasts 90% credible interval for the current BDBV outbreak (doubling time 13.8–22.8 days), the median undetected fraction ranges from approximately `r {gp_sub <- gp_summary |> filter(doubling_time >= 13.8 & doubling_time <= 22.8); sprintf("%.0f\u2013%.0f%%", 100 * min(gp_sub$med), 100 * max(gp_sub$med))}`. Under the more pessimistic latest-estimate lower bound (4.5 days), the undetected fraction rises to `r {sprintf("%.0f%%", 100 * gp_summary$med[gp_summary$doubling_time == 4.5])}` (95% CrI: `r {sprintf("%.0f\u2013%.0f%%", 100 * gp_summary$lo95[gp_summary$doubling_time == 4.5], 100 * gp_summary$hi95[gp_summary$doubling_time == 4.5])}`), compared with `r sprintf("%.0f%%", 100 * stable_sum$med)` under a stable epidemic. This result highlights that the rapidly evolving phase of an outbreak is precisely the period during which screening is least effective.
+The proportion of infected travellers going undetected increases as the epidemic doubling time shortens (@fig-growth-phase). If the true doubling time falls within the initial epiforecasts 90% credible interval (13.8–22.8 days), the model estimates a corresponding undetected fraction of approximately `r {gp_sub <- gp_summary |> filter(doubling_time >= 13.8 & doubling_time <= 22.8); sprintf("%.0f\u2013%.0f%%", 100 * min(gp_sub$med), 100 * max(gp_sub$med))}`. Under the more pessimistic latest-estimate lower bound (4.5 days), the undetected fraction rises to `r {sprintf("%.0f%%", 100 * gp_summary$med[gp_summary$doubling_time == 4.5])}` (95% CrI: `r {sprintf("%.0f\u2013%.0f%%", 100 * gp_summary$lo95[gp_summary$doubling_time == 4.5], 100 * gp_summary$hi95[gp_summary$doubling_time == 4.5])}`), compared with `r sprintf("%.0f%%", 100 * stable_sum$med)` under a stable epidemic. This pattern is consistent with the general principle that screening performs less well during periods of rapid epidemic growth, when pre-symptomatic cases are overrepresented among travellers.
 
 ### Sensitivity analysis: screening sensitivity at exit and entry
 
 ```{r fig-screen-sensitivity}
-#| fig-cap: "Joint sensitivity analysis: proportion of infected travellers undetected as a function of exit screening sensitivity (x-axis) and entry screening sensitivity (y-axis), for a 12-hour flight with posterior-median BDBV natural-history parameters and stable-epidemic exposure distribution. The star marks the primary scenario (86% at both stages). Diagonal dashed lines indicate contours of equal combined coverage."
+#| fig-cap: "Joint sensitivity analysis: proportion of infected travellers undetected as a function of exit screening sensitivity (x-axis) and entry screening sensitivity (y-axis), for a 12-hour flight with posterior-median BVD natural-history parameters and stable-epidemic exposure distribution. The star marks the primary scenario (86% at both stages). Diagonal dashed lines indicate contours of equal combined coverage."
 
-exit_sens_grid  <- sort(unique(c(seq(0, 100, by = 10), SENS_EXIT)))
-entry_sens_grid <- sort(unique(c(seq(0, 100, by = 10), SENS_ENTRY)))
-
-set.seed(SEED)
-screen_grid <- tidyr::crossing(
-  exit_s  = exit_sens_grid,
-  entry_s = entry_sens_grid
-) |>
-  mutate(
-    prop_undetected = purrr::map2_dbl(
-      exit_s, entry_s,
-      ~ calc_probs(
-        dur.flight = FLIGHT_H,
-        mu_inc     = MU_INC,
-        sigma_inc  = SIGMA_INC,
-        mu_inf     = median(post$mean_oa),
-        sigma_inf  = median(post$sd_oa)^2,
-        sens.exit  = .x,
-        sens.entry = .y,
-        prop.asy   = PROP_ASY,
-        sims       = 5000L
-      )$prop_undetected
-    )
-  )
-
-# filter to regular 10-point grid for plotting (86 kept in screen_grid for inline text)
 screen_grid_plot <- screen_grid |>
   dplyr::filter(exit_s %in% seq(0, 100, by = 10), entry_s %in% seq(0, 100, by = 10))
 
@@ -623,19 +476,27 @@ ggplot(screen_grid_plot, aes(x = exit_s, y = entry_s, fill = prop_undetected)) +
   theme(panel.grid = element_blank())
 ```
 
-Exit screening sensitivity has a larger marginal effect on the undetected fraction than entry screening sensitivity, because it acts on a larger at-risk window — any traveller who is already symptomatic at departure can be caught at exit, whereas entry screening only adds value for those who become symptomatic during the flight (@fig-screen-sensitivity). When exit screening is absent entirely (sensitivity 0%) but entry screening is maintained at 86%, `r {sprintf("%.0f%%", 100 * screen_grid$prop_undetected[screen_grid$exit_s == 0 & screen_grid$entry_s == 86])}` of travellers remain undetected, compared with `r {sprintf("%.0f%%", 100 * screen_grid$prop_undetected[screen_grid$exit_s == 86 & screen_grid$entry_s == 0])}` when entry screening is absent and exit is maintained at 86%. This asymmetry reflects the longer opportunity for symptom detection that the pre-flight period provides relative to the flight itself.
+Exit screening sensitivity has a larger marginal effect on the undetected fraction than entry screening sensitivity, because it acts on a larger at-risk window: any traveller already symptomatic at departure can be caught at exit, whereas entry screening only adds value for those who become symptomatic during the flight or who were missed due to imperfect screening at exit (@fig-screen-sensitivity). When exit screening is absent entirely (sensitivity 0%) but entry screening is maintained at 86%, `r {sprintf("%.0f%%", 100 * screen_grid$prop_undetected[screen_grid$exit_s == 0 & screen_grid$entry_s == 86])}` of travellers remain undetected, compared with `r {sprintf("%.0f%%", 100 * screen_grid$prop_undetected[screen_grid$exit_s == 86 & screen_grid$entry_s == 0])}` when entry screening is absent and exit is maintained at 86%. This asymmetry reflects the longer opportunity for symptom detection that the pre-flight period provides relative to the flight itself.
 
 ## Discussion
 
-This analysis estimates that combined exit and entry airport screening for BDBV, at 86% sensitivity and 12-hour DRC-or-Uganda-to-UK travel time, will fail to detect approximately `r sprintf("%.0f%%", 100 * median(pp$prop_undetected))` of infected travellers, with a credible interval of `r sprintf("%.0f–%.0f%%", 100 * quantile(pp$prop_undetected, 0.025), 100 * quantile(pp$prop_undetected, 0.975))`. This estimate reflects the relatively short onset-to-hospitalisation interval of BDBV — a mean of approximately four days — which means that most travellers who have developed symptoms will progress to detectable severe disease quickly, yet the incubation period (approximately 7.7 days; Wamala et al. 2010) means that many infected travellers will board their flight before they become symptomatic at all.
+At 86% sensitivity on a 12-hour international flight, combined syndromic exit and entry screening will fail to detect approximately `r sprintf("%.0f%%", 100 * median(pp$prop_undetected))` of infected travellers (95% CrI: `r sprintf("%.0f–%.0f%%", 100 * quantile(pp$prop_undetected, 0.025), 100 * quantile(pp$prop_undetected, 0.975))`). The relatively short onset-to-severe-disease interval (mean approximately four days) means that symptomatic travellers progress to detectable illness quickly, yet the incubation period (approximately 7.7 days @Wamala2010) means that most infected travellers will board before symptom onset.
 
-These findings are broadly consistent with prior modelling of airport screening for Zaire ebolavirus and other viral haemorrhagic fevers. Mabey et al. (2014) [@Mabey2014] estimated that exit screening during the 2014 West Africa ZEBOV epidemic would detect only 7--18% of infected travellers on typical long-haul routes, with combined exit and entry screening performing marginally better; the primary driver of failure was departure during the incubation period. Pitman et al. (2005) [@Pitman2005] showed that even under the assumption of 100% screening sensitivity, entry-only screening for SARS would detect approximately one quarter of infected arrivals, with realistic instrument sensitivity (30--50%) reducing this to fewer than one in ten. Gostic et al. (2015) [@Gostic2015] demonstrated that screening effectiveness is primarily determined by the ratio of the incubation period to the onset-to-severe-disease interval and by the proportion of asymptomatic infection; a subsequent application to COVID-19 estimated that even under best-case assumptions, combined departure and arrival screening would detect a median of only 30% (95% interval 10--53%) of infected travellers in a growing epidemic [@Gostic2020]. Our BDBV estimates are of a similar order to those for ZEBOV and are somewhat more favourable than the COVID-19 results under low-asymptomatic assumptions, consistent with the relatively short BDBV incubation period and the low observed asymptomatic fraction. Our results show the same qualitative pattern as all prior work: across the plausible range for BDBV, the dominant source of variation in the undetected fraction is the incubation period, with the asymptomatic fraction playing a secondary role given the low asymptomatic rates observed for EVD.
+The picture is consistent with prior modelling for Zaire ebolavirus and other viral haemorrhagic fevers. Mabey et al. (2014) [@Mabey2014] estimated that exit screening during the 2014 West Africa ZEBOV epidemic would detect only 7--18% of infected travellers on typical long-haul routes, with combined exit and entry screening performing marginally better; the primary driver of failure was departure during the incubation period. Pitman et al. (2005) [@Pitman2005] showed that even under the assumption of 100% screening sensitivity, entry-only screening for SARS would detect approximately one quarter of infected arrivals, with realistic instrument sensitivity (30--50%) reducing this to fewer than one in ten. Gostic et al. (2015) [@Gostic2015] demonstrated that screening effectiveness is primarily determined by the ratio of the incubation period to the onset-to-severe-disease interval and by the proportion of asymptomatic infection; a subsequent application to COVID-19 estimated that even under best-case assumptions, combined departure and arrival screening would detect a median of only 30% (95% interval 10--53%) of infected travellers in a growing epidemic [@Gostic2020]. Our BVD estimates are of a similar order to those for ZEBOV and are somewhat more favourable than the COVID-19 results under low-asymptomatic assumptions, consistent with the relatively short BDBV incubation period and the low observed asymptomatic fraction. Across the plausible range for BVD, the incubation period is the dominant source of variation in the undetected fraction; the asymptomatic fraction is secondary, given the low rates observed for EVD.
 
-Several important limitations apply to this analysis. First, only three BDBV-specific incubation period estimates exist: Wamala et al. (2010) (mean 7.68 days, n = 116) [@Wamala2010], MacNeil et al. (2010) (mean 6.3 days, n = 24) [@MacNeil2010], and Kratz et al. (2015) (median 11.3 days, n = 3) [@Kratz2015]. The Kratz estimate is based on only three cases, and the large range (2--27 days) reflects small-sample uncertainty. We use the Wamala estimate as primary on the basis of the largest sample size and propagate between-study uncertainty in the incubation prior (SD 2.6 days). Second, the Isiro 2012 outbreak comprised only 52 cases, and the resulting posterior distributions — whilst appropriately wide — are based on a small sample. The Gamma shape and scale posteriors for the onset-to-admission delay have wide 95% credible intervals, and this uncertainty propagates directly into our screening effectiveness estimates. Third, the model assumes a single uniform flight duration of 12 hours; in reality, travellers from DRC and Uganda to the UK take a variety of itineraries with different durations, layovers, and connection points, each of which offers additional opportunities for detection (or re-exposure in a transit lounge). Fourth, the assumed 86% screening sensitivity is derived from a study of thermal image scanning performance during influenza border screening [@Priest2011] and was used in the original 2019-nCoV screening model [@Quilty2020]; actual sensitivity for EVD symptom detection in field conditions may differ. Fifth, the model does not account for post-arrival healthcare-seeking behaviour, which represents an important additional detection pathway; infected travellers who develop symptoms after arrival are likely to seek medical care and, if BDBV is considered, to be diagnosed.
+This analysis has several limitations. The BVD-specific evidence base for the incubation period is sparse (only three estimates exist [@Wamala2010; @MacNeil2010; @Kratz2015], as described in the Introduction, and the Kratz et al. (2015) estimate rests on only three cases), and the Isiro 2012 line list comprises only 52 cases. The resulting posterior distributions, whilst appropriately wide, are based on a small sample. The Gamma shape and scale posteriors for the onset-to-admission delay have wide 95% credible intervals, and this uncertainty propagates directly into our screening effectiveness estimates. The model also assumes a single uniform flight duration of 12 hours; in reality, travellers from DRC and Uganda take a variety of itineraries with different durations, layovers, and connection points depending on destination. Our flight-duration sensitivity analysis (@fig-flight-duration) demonstrates that outcomes vary only modestly across the 10–16-hour range typical of connecting itineraries, so this simplification does not materially affect the conclusions. The assumed 86% screening sensitivity is derived from a study of thermal image scanning performance during influenza border screening [@Priest2011] and was used in the original 2019-nCoV (later COVID-19) screening model [@Quilty2020]; actual sensitivity for EVD symptom detection in field conditions may differ substantially, given differences in fever thresholds, environmental conditions, operator training, and patient cooperation. Because the assumed sensitivity is not BDBV-specific, the screening sensitivity analysis (@fig-screen-sensitivity) should be treated as a primary result alongside the central estimates, not as a secondary sensitivity check. Post-arrival healthcare-seeking behaviour is also not captured; infected travellers who develop symptoms after arrival are likely to seek medical care and, if BDBV is considered, to be diagnosed, representing an important additional detection pathway not captured here.
 
-Sixth, the simulation model assumes that exposure times are distributed uniformly across the natural history window, which approximates a stable (non-growing) epidemic. In an actively growing outbreak — as the current DRC BDBV situation is likely to be — the distribution of infection ages among travelling cases is skewed towards recent exposure, because recent cases outnumber older ones. Under this scenario, a greater fraction of departing travellers will be pre-symptomatic, and the proportion undetected will be higher than our central estimates suggest. Gostic et al. (2015, 2020) [@Gostic2015; @Gostic2020] showed that this epidemic-phase effect can reduce detection, and our growth-phase sensitivity analysis (@fig-growth-phase) demonstrates a similar pattern for BDBV: under the initial 90% credible interval for the current outbreak doubling time (13.8–22.8 days; epiforecasts 2026 [@FunkAbbott2026]), the undetected fraction increases relative to the stable-epidemic baseline, and under the most pessimistic scenario (doubling time 4.5 days) may be higher still. Our central estimates should therefore be interpreted as a lower bound on the undetected fraction during an active growth phase. Seventh, the model does not include questionnaire-based exposure risk screening, which forms part of real-world EVD port-of-entry protocols. Since BDBV transmission requires direct contact with a symptomatic or deceased case, travellers with known exposure history should, in principle, be detectable by structured risk questionnaires even before fever onset. Incorporating this detection pathway — with appropriate assumptions about the fraction of travellers who are aware of their exposure and willing to self-report — would be expected to increase modelled detection rates above the symptom-screening-only estimates presented here.
+The model removes travellers from the departing pool once they have progressed to severe disease, treating onset-to-severe-disease as equivalent to the threshold for being too ill to travel. In DRC and Uganda, however, hospitalisation can lag clinical deterioration by hours to days owing to health-system access constraints, geographic barriers, and health-seeking norms. The effective "too ill to travel" threshold is therefore likely to be later than the biological severe-disease onset assumed here, meaning the model may underestimate the proportion of symptomatic travellers who successfully board, an anti-conservative bias in this specific direction.
 
-In summary, airport screening for BDBV is unlikely to detect a meaningful proportion of infected travellers to provide robust containment. Any imported case that escapes detection at both exit and entry represents a potential index case in the UK, underscoring the importance of clinician awareness of BDBV and preparedness to diagnose and isolate suspected cases presenting with febrile illness following travel from affected regions.
+The model does not account for traveller selection effects. During an active outbreak, some infected individuals may travel specifically to seek care that is unavailable locally, biasing the departing caseload towards symptomatic presentations; conversely, awareness of the outbreak, border communication campaigns, or voluntary self-isolation may deter others, reducing the infected fraction among travellers overall. These pressures operate in opposite directions and are difficult to quantify without data on travel volumes and health-seeking behaviour specific to the outbreak context. The baseline assumption, that infected travellers are drawn at random from the infected population with a uniform exposure-age distribution, is a simplification that may not hold in practice.
+
+The simulation model also assumes that exposure times are distributed uniformly across the natural history window, which approximates a stable (non-growing) epidemic. In an actively growing outbreak, as the current DRC BDBV situation likely is, the distribution of infection ages among travelling cases is skewed towards recent exposure, because recent cases outnumber older ones. Under this scenario, a greater fraction of departing travellers will be pre-symptomatic, and the proportion undetected will be higher than our central estimates suggest. Gostic et al. (2015, 2020) [@Gostic2015; @Gostic2020] showed that this epidemic-phase effect can reduce detection, and our growth-phase sensitivity analysis (@fig-growth-phase) demonstrates a similar pattern for BVD: under the initial 90% credible interval for the current BVD outbreak doubling time (13.8–22.8 days; epiforecasts 2026 [@FunkAbbott2026]), the undetected fraction increases relative to the stable-epidemic baseline, and under the most pessimistic scenario (doubling time 4.5 days) may be higher still. Our central estimates should therefore be interpreted as a lower bound on the undetected fraction during an active growth phase. The model does not include questionnaire-based exposure risk screening, which forms part of real-world EVD port-of-entry protocols. Since BVD transmission requires direct contact with a symptomatic or deceased case, travellers with known exposure history should, in principle, be detectable by structured risk questionnaires even before fever onset. Incorporating this pathway would increase modelled detection rates above the syndromic-screening-only estimates here. Finally, the model conditions on a traveller already being infected and therefore estimates the sensitivity of screening, defined as the probability of detecting an infected traveller, rather than predictive values. Translating these results into positive or negative predictive values, or into expected counts of imported cases, would require assumptions about the prevalence of infection among travellers departing affected areas, which is highly uncertain during an active outbreak and outside the scope of this analysis.
+
+Syndromic airport screening for BVD is unlikely to detect most infected travellers. This conclusion is consistent with the PHEIC temporary recommendations issued by WHO [@WHO2026PHEIC], which advise exit screening in affected countries but explicitly state that entry screening outside the affected region is not considered necessary. Resources directed at airport screening in receiving countries carry an opportunity cost: equivalent investment in contact tracing capacity, isolation infrastructure, and healthcare worker protection in DRC and Uganda would more directly reduce onward transmission at the source. For receiving countries, the more actionable layer of protection is clinician preparedness: healthcare providers in low-incidence settings should consider BVD in the differential diagnosis of febrile illness with a travel history from affected regions, supported by clear referral pathways to high-consequence infectious disease units, pre-agreed diagnostic protocols at those centres, and timely communication between national public health authorities and point-of-care clinicians.
+
+## Acknowledgements {.unnumbered}
+
+This work was conducted in response to a request for modelling from W. John Edmunds (London School of Hygiene & Tropical Medicine / UK Foreign, Commonwealth & Development Office). The interactive screening Shiny application and `airportscreening` R package on which this analysis is based were originally developed for the COVID-19 pandemic response; the application was co-developed with Sam Clifford and the package with Pratik Gupte.
 
 ## References {.unnumbered}
 

@@ -47,15 +47,19 @@ time_to_event <- function(n, mean, var) {
 #' @keywords internal
 #' @return A data.frame of travel and infection outcomes.
 generate_histories <- function(dur.flight, mu_inc, sigma_inc,
-                               mu_inf, sigma_inf, sens.exit,
-                               sens.entry, prop.asy, sims,
+                               mu_inf, sigma_inf, mu_od, sigma_od,
+                               sens.exit, sens.entry, prop.asy, sims,
                                growth_rate = 0, seed = NULL) {
   if (!is.null(seed)) set.seed(seed)
   tibble::tibble(
     incu = time_to_event(n = sims, mean = mu_inc, var = sigma_inc),
     inf = time_to_event(sims, mu_inf, sigma_inf),
+    # onset-to-death used as onset-to-recovery for asymptomatics:
+    # the full travel window is t_inc + t_inf + t_rec, grounding the
+    # exposure distribution in the complete BDBV natural-history trajectory
+    rec = time_to_event(sims, mu_od, sigma_od),
     flight.departure = {
-      t_max <- 2 * (.data$incu + .data$inf)
+      t_max <- .data$incu + .data$inf + .data$rec
       if (growth_rate <= 0) {
         stats::runif(sims, min = 0, max = t_max)
       } else {
@@ -81,6 +85,11 @@ generate_histories <- function(dur.flight, mu_inc, sigma_inc,
 #'   (e.g. hospitalisation), in days.
 #' @param sigma_inf Variance (not SD) of the time from symptom onset to severe
 #'   symptoms, in days\u00b2.
+#' @param mu_od Mean onset-to-death delay (days), used as a proxy for the
+#'   onset-to-recovery delay for asymptomatic cases. Together with
+#'   `sigma_od`, this defines the tail of the full natural-history window
+#'   `t_inc + t_inf + t_rec` within which a traveller may board.
+#' @param sigma_od Variance (not SD) of the onset-to-death delay, in days\u00b2.
 #' @param sens.exit Sensitivity of tests used upon departure (percent, 0\u2013100).
 #' @param sens.entry Sensitivity of tests used upon arrival (percent, 0\u2013100).
 #' @param prop.asy Proportion of asymptomatic infections (percent, 0\u2013100).
@@ -93,8 +102,8 @@ generate_histories <- function(dur.flight, mu_inc, sigma_inc,
 #' @return A named list with probabilities of different travel and infection
 #' outcomes.
 calc_probs <- function(dur.flight, mu_inc, sigma_inc,
-                       mu_inf, sigma_inf, sens.exit,
-                       sens.entry, prop.asy, sims,
+                       mu_inf, sigma_inf, mu_od, sigma_od,
+                       sens.exit, sens.entry, prop.asy, sims,
                        growth_rate = 0, seed = NULL) {
   # convert flight time from hours to days before passing to generate_histories
   dur.flight_days <- dur.flight / 24.0
@@ -105,6 +114,8 @@ calc_probs <- function(dur.flight, mu_inc, sigma_inc,
     sigma_inc   = sigma_inc,
     mu_inf      = mu_inf,
     sigma_inf   = sigma_inf,
+    mu_od       = mu_od,
+    sigma_od    = sigma_od,
     sens.exit   = sens.exit,
     sens.entry  = sens.entry,
     prop.asy    = prop.asy,
@@ -199,6 +210,8 @@ generate_travellers <- function(input, i, seed = NULL) {
       sigma_inc   = input$sigma_inc,
       mu_inf      = input$mu_inf,
       sigma_inf   = input$sigma_inf,
+      mu_od       = input$mu_od,
+      sigma_od    = input$sigma_od,
       sens.exit   = input$sens.exit,
       sens.entry  = input$sens.entry,
       prop.asy    = input$prop.asy,
@@ -293,12 +306,18 @@ calc_probs_posterior <- function(posterior_draws,
       sigma_inc_k <- sigma_inc
     }
 
+    # onset-to-death: used as onset-to-recovery for asymptomatics
+    mu_od_k <- draws$od_mean[k]
+    sigma_od_k <- draws$od_sd[k]^2
+
     probs_k <- calc_probs(
       dur.flight  = dur.flight,
       mu_inc      = mu_inc_k,
       sigma_inc   = sigma_inc_k,
       mu_inf      = mu_inf_k,
       sigma_inf   = sigma_inf_k,
+      mu_od       = mu_od_k,
+      sigma_od    = sigma_od_k,
       sens.exit   = sens.exit,
       sens.entry  = sens.entry,
       prop.asy    = prop.asy,
@@ -311,7 +330,9 @@ calc_probs_posterior <- function(posterior_draws,
         mu_inf_draw    = mu_inf_k,
         sigma_inf_draw = sigma_inf_k,
         mu_inc_draw    = mu_inc_k,
-        sigma_inc_draw = sigma_inc_k
+        sigma_inc_draw = sigma_inc_k,
+        mu_od_draw     = mu_od_k,
+        sigma_od_draw  = sigma_od_k
       )
     ))
   }
