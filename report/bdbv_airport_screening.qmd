@@ -159,7 +159,7 @@ Four sensitivity analyses were conducted. First, we examined how the proportion 
 
 ### Software
 
-All analyses were performed in R (version ≥ 4.1; R Core Team 2024). The simulation model is implemented in the `airportscreening` R package, available at [github.com/bquilty25/airport_screening_ebola_bvd](https://github.com/bquilty25/airport_screening_ebola_bvd). 
+All analyses were performed in R (version ≥ 4.1; R Core Team 2024). The simulation model is implemented in the `airportscreening` R package, available at [github.com/bquilty25/airport_screening_ebola_bvd](https://github.com/bquilty25/airport_screening_ebola_bvd). An interactive Shiny application for exploring screening parameters is included in the repository and can be launched locally by running `airportscreening::run_app()` after installing the package.
 
 ## Results
 

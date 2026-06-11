@@ -2,7 +2,7 @@
 
 <!-- badges: start -->
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20632017.svg)](https://doi.org/10.5281/zenodo.20632017)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20640123.svg)](https://doi.org/10.5281/zenodo.20640123)
 <!-- badges: end -->
 
 An R package and Shiny app for estimating the effectiveness of airport screening in detecting infected travellers, adapted for **Bundibugyo ebolavirus (BDBV)** in the context of the 2026 DRC outbreak.
@@ -20,9 +20,16 @@ devtools::install_github("bquilty25/airport_screening_ebola_bvd")
 
 ## Usage
 
+### Launch the Shiny app
+
+1. Install the package (see [Installation](#installation) above).
+2. Launch the app from an R session:
+
 ```r
 airportscreening::run_app()
 ```
+
+The app will open in your default browser. If it does not open automatically, copy the URL printed in the R console (e.g. `http://127.0.0.1:XXXX`) and paste it into your browser.
 
 The app allows adjustment of:
 
@@ -46,10 +53,8 @@ Source: [`report/bdbv_airport_screening.qmd`](report/bdbv_airport_screening.qmd)
 
 If you use this package or report, please cite the Zenodo release (concept DOI, resolves to latest version):
 
-> Quilty BJ. airport_screening_ebola_bvd. Zenodo. https://doi.org/10.5281/zenodo.20632017
+> Quilty BJ. airport_screening_ebola_bvd. Zenodo. https://doi.org/10.5281/zenodo.20640123
 
-To cite a specific version (e.g. v0.1): https://doi.org/10.5281/zenodo.20631930
-
-This app extends the model of Quilty et al. (2020). Please also cite the original paper:
+This app extends the model of Quilty et al. (2020).
 
 > Quilty BJ, Clifford S, CMMID nCoV Working Group, Flasche S, Eggo RM. Effectiveness of airport screening at detecting travellers infected with novel coronavirus (2019-nCoV). *Euro Surveill.* 2020;25(5):pii=2000080. https://doi.org/10.2807/1560-7917.ES.2020.25.5.2000080
