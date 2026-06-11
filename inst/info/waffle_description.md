@@ -6,6 +6,3 @@ Given the scenario set out in the panel, consider 1000 infected air travellers w
 * be detected via <b><span style="color:#8DA0CB">entry screening on arrival</span></b>, or
 * <b><span style="color:#FC8D62">not be detected</span></b>.
 <br/><br/>
-
-The aim of entry screening is to detect infected people who were not detected at exit screening. Therefore we also provide the percentage of these infections who were subsequently detected as severe on the flight, or were detected at entry screening.
-
