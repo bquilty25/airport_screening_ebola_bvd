@@ -137,6 +137,14 @@ run_app <- function() {
                 " hospitalisation (SD, days)"
               ),
               value = 3.70, min = 0.01, max = 30, step = 0.01
+            ),
+            shiny::numericInput("mu_od",
+              "Days from symptom onset to death/recovery (mean)",
+              value = 11.71, min = 0.1, max = 60, step = 0.1
+            ),
+            shiny::numericInput("sigma_od",
+              "Days from symptom onset to death/recovery (SD, days)",
+              value = 6.54, min = 0.01, max = 30, step = 0.01
             )
           ),
           shiny::checkboxInput("uncert",
@@ -203,6 +211,8 @@ run_app <- function() {
         sigma_inc = input$sigma_inc^2,
         mu_inf = input$mu_inf,
         sigma_inf = input$sigma_inf^2,
+        mu_od = input$mu_od,
+        sigma_od = input$sigma_od^2,
         sens.exit = if (isTRUE(input$do_exit)) input$sens.exit else 0,
         sens.entry = if (isTRUE(input$do_entry)) input$sens.entry else 0,
         prop.asy = input$prop.asy,
@@ -232,6 +242,14 @@ run_app <- function() {
       shiny::updateNumericInput(session, "sigma_inf",
         value = round(sqrt(pathogen_parameters[pathogen_parameters$name ==
           pathogen_input, ]$sigma_inf), 2)
+      )
+      shiny::updateNumericInput(session, "mu_od",
+        value = pathogen_parameters[pathogen_parameters$name ==
+          pathogen_input, ]$mu_od
+      )
+      shiny::updateNumericInput(session, "sigma_od",
+        value = round(sqrt(pathogen_parameters[pathogen_parameters$name ==
+          pathogen_input, ]$sigma_od), 2)
       )
     })
 

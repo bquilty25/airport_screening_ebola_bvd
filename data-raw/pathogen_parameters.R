@@ -48,7 +48,10 @@ pathogen_parameters <- do.call(
       mu_inf = 4.03,
       sigma_inf = 13.72,
       # Asymptomatic proportion: EVD literature conservative upper estimate
-      prop.asy = 5
+      prop.asy = 5,
+      # Onset-to-death: posterior median from bdbv-linelist-analysis
+      mu_od = 11.71,
+      sigma_od = 42.78
     ),
     data.frame(
       name = "nCoV-2019",
@@ -57,7 +60,10 @@ pathogen_parameters <- do.call(
       sigma_inc = 4.1,
       mu_inf = 9.1,
       sigma_inf = 14.7,
-      prop.asy = 0.17 * 100
+      prop.asy = 0.17 * 100,
+      # Onset-to-death: ~18 d mean, SD ~10 d (hospitalised COVID-19)
+      mu_od = 18.0,
+      sigma_od = 100.0
     ),
     data.frame(
       name = "SARS-like (2002)",
@@ -65,7 +71,10 @@ pathogen_parameters <- do.call(
       sigma_inc = 16.7,
       mu_inf = 3.8,
       sigma_inf = 6.0,
-      prop.asy = 0.0 * 100
+      prop.asy = 0.0 * 100,
+      # Onset-to-death: ~20 d mean, SD ~10 d (SARS literature)
+      mu_od = 20.0,
+      sigma_od = 100.0
     ),
     data.frame(
       name = "Flu A/H1N1-like (2009)",
@@ -73,7 +82,10 @@ pathogen_parameters <- do.call(
       sigma_inc = 1.05,
       mu_inf = 9.3,
       sigma_inf = 0.7,
-      prop.asy = 0.16 * 100 # https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4586318/
+      prop.asy = 0.16 * 100, # https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4586318/
+      # Onset-to-death: ~10 d mean, SD ~5 d (influenza literature)
+      mu_od = 10.0,
+      sigma_od = 25.0
     ),
     data.frame(
       name = "MERS-like (2012)",
@@ -85,7 +97,10 @@ pathogen_parameters <- do.call(
       # nolint end
       mu_inf = 5.0, # https://www.nejm.org/doi/10.1056/NEJMoa1306742
       sigma_inf = 7.5,
-      prop.asy = 21 # 21 % — Al-Tawfiq & Gautret 2019
+      prop.asy = 21, # 21 % — Al-Tawfiq & Gautret 2019
+      # Onset-to-death: ~12 d mean, SD ~8 d (MERS literature)
+      mu_od = 12.0,
+      sigma_od = 64.0
     ),
     data.frame(
       name = "Custom",
@@ -93,7 +108,9 @@ pathogen_parameters <- do.call(
       sigma_inc = 5.0,
       mu_inf = 5.0,
       sigma_inf = 5.0,
-      prop.asy = 0.5 * 100
+      prop.asy = 0.5 * 100,
+      mu_od = 10.0,
+      sigma_od = 25.0
     )
   )
 )
