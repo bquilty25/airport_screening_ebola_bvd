@@ -470,7 +470,7 @@ run_app <- function() {
 
         rbind(
           make_rows(unconditional_levels, unconditional_labels),
-          data.frame("Detection outcome" = "Of those who flew:", "Estimate (95% CI)" = "", check.names = FALSE, stringsAsFactors = FALSE),
+          data.frame("Detection outcome" = "Of every 1000 who flew:", "Estimate (95% CI)" = "", check.names = FALSE, stringsAsFactors = FALSE),
           make_rows(conditional_levels, conditional_labels)
         )
       } else {
