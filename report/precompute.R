@@ -37,7 +37,33 @@ pp <- calc_probs_posterior(
     sims_per_draw = SIMS_PER_DRAW,
     n_draws       = N_DRAWS,
     seed          = SEED
-)
+) %>%
+    mutate(
+        cond_sev_at_entry = prop_sev_at_entry / (1 - prop_symp_at_exit),
+        cond_symp_at_entry = prop_symp_at_entry / (1 - prop_symp_at_exit),
+        cond_undetected = prop_undetected / (1 - prop_symp_at_exit)
+    )
+
+# ── Best-case exit posterior ──────────────────────────────────────────────────
+message("Running best-case exit posterior...")
+pp_exit100 <- calc_probs_posterior(
+    post,
+    dur.flight    = FLIGHT_H,
+    mu_inc        = MU_INC,
+    sigma_inc     = SIGMA_INC,
+    inc_prior_sd  = INC_PRIOR_SD,
+    sens.exit     = 100,
+    sens.entry    = 100,
+    prop.asy      = PROP_ASY,
+    sims_per_draw = SIMS_PER_DRAW,
+    n_draws       = N_DRAWS,
+    seed          = SEED + 400L
+) %>%
+    mutate(
+        cond_sev_at_entry = prop_sev_at_entry / (1 - prop_symp_at_exit),
+        cond_symp_at_entry = prop_symp_at_entry / (1 - prop_symp_at_exit),
+        cond_undetected = prop_undetected / (1 - prop_symp_at_exit)
+    )
 
 # ── Point estimate ────────────────────────────────────────────────────────────
 message("Running point estimate...")
@@ -222,6 +248,81 @@ screen_grid <- tidyr::crossing(
         )
     )
 
+# ── Mabey 2014 comparison sweep ───────────────────────────────────────────────
+message("Running Mabey 2014 comparison sweep...")
+mabey_6_42_exit100 <- calc_probs_posterior(
+    post,
+    dur.flight    = 6.42,
+    mu_inc        = MU_INC,
+    sigma_inc     = SIGMA_INC,
+    inc_prior_sd  = INC_PRIOR_SD,
+    sens.exit     = 100,
+    sens.entry    = 100,
+    prop.asy      = PROP_ASY,
+    sims_per_draw = 1000L,
+    n_draws       = N_DRAWS,
+    seed          = SEED + 100L
+) %>%
+    mutate(prop_detected_boarded = (prop_sev_at_entry + prop_symp_at_entry) / (1 - prop_symp_at_exit))
+
+mabey_13_exit100 <- calc_probs_posterior(
+    post,
+    dur.flight    = 13.0,
+    mu_inc        = MU_INC,
+    sigma_inc     = SIGMA_INC,
+    inc_prior_sd  = INC_PRIOR_SD,
+    sens.exit     = 100,
+    sens.entry    = 100,
+    prop.asy      = PROP_ASY,
+    sims_per_draw = 1000L,
+    n_draws       = N_DRAWS,
+    seed          = SEED + 200L
+) %>%
+    mutate(prop_detected_boarded = (prop_sev_at_entry + prop_symp_at_entry) / (1 - prop_symp_at_exit))
+
+mabey_13_exit0 <- calc_probs_posterior(
+    post,
+    dur.flight    = 13.0,
+    mu_inc        = MU_INC,
+    sigma_inc     = SIGMA_INC,
+    inc_prior_sd  = INC_PRIOR_SD,
+    sens.exit     = 0,
+    sens.entry    = 100,
+    prop.asy      = PROP_ASY,
+    sims_per_draw = 1000L,
+    n_draws       = N_DRAWS,
+    seed          = SEED + 300L
+) %>%
+    mutate(prop_detected_boarded = prop_sev_at_entry + prop_symp_at_entry)
+
+# ── Supplementary Mabey Comparison Flight Duration Sweep ──────────────────────
+message("Running supplementary Mabey comparison sweeps...")
+flight_durations_mabey <- c(1, 2, 3, 4, 5, 6, 6.42, 8, 10, 12, 13, 14, 16, 18, 20)
+
+mabey_sweep_bdbv <- purrr::map_dfr(flight_durations_mabey, function(h) {
+    set.seed(SEED + round(h * 10))
+    mu_inc_ks <- pmax(0.5, rnorm(N_DRAWS, mean = MU_INC, sd = INC_PRIOR_SD))
+    
+    probs <- purrr::map_dbl(mu_inc_ks, function(mu) {
+        sig <- cv2_inc * mu^2
+        incu <- rgamma(2000L, shape = mu^2 / sig, rate = mu / sig)
+        0.95 * mean(pmin(1, (h/24) / incu))
+    })
+    
+    tibble(
+        flight_h = h,
+        draw_i = seq_len(N_DRAWS),
+        prop_detected_boarded = probs
+    )
+})
+
+mabey_sweep_zebov <- purrr::map_dfr(flight_durations_mabey, function(h) {
+    # 0% asymptomatic and fixed incubation mean=9.1, SD=7.3
+    incu <- rgamma(100000L, shape = 9.1^2 / 7.3^2, rate = 9.1 / 7.3^2)
+    prob <- mean(pmin(1, (h/24) / incu))
+    tibble(flight_h = h, prop_detected_boarded = prob)
+})
+
 # ── Save ──────────────────────────────────────────────────────────────────────
 message("Saving results...")
 qsave(
@@ -236,6 +337,12 @@ qsave(
         stable = stable,
         screen_grid = screen_grid,
         post = post,
+        pp_exit100 = pp_exit100,
+        mabey_6_42_exit100 = mabey_6_42_exit100,
+        mabey_13_exit100 = mabey_13_exit100,
+        mabey_13_exit0 = mabey_13_exit0,
+        mabey_sweep_bdbv = mabey_sweep_bdbv,
+        mabey_sweep_zebov = mabey_sweep_zebov,
         params = list(
             SEED = SEED, N_DRAWS = N_DRAWS, SIMS_PER_DRAW = SIMS_PER_DRAW,
             FLIGHT_H = FLIGHT_H, SENS_EXIT = SENS_EXIT, SENS_ENTRY = SENS_ENTRY,
@@ -250,3 +357,5 @@ qsave(
 )
 
 message("Done. Saved to report/precomputed.qs")
+
+
