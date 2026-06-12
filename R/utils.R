@@ -203,23 +203,30 @@ make_ci_label <- function(x) {
 #' and the proportions that have severe infections upon arrival, and also the
 #' proportion which is infected but undetected upon arrival.
 generate_travellers <- function(input, i, seed = NULL) {
-  as.data.frame(
-    calc_probs(
-      dur.flight  = input$dur.flight,
-      mu_inc      = input$mu_inc,
-      sigma_inc   = input$sigma_inc,
-      mu_inf      = input$mu_inf,
-      sigma_inf   = input$sigma_inf,
-      mu_od       = input$mu_od,
-      sigma_od    = input$sigma_od,
-      sens.exit   = input$sens.exit,
-      sens.entry  = input$sens.entry,
-      prop.asy    = input$prop.asy,
-      growth_rate = if (!is.null(input$growth_rate)) input$growth_rate else 0,
-      sims        = i,
-      seed        = seed
+  purrr::map_dfr(seq_along(i), function(j) {
+    row <- as.data.frame(
+      calc_probs(
+        dur.flight  = input$dur.flight,
+        mu_inc      = input$mu_inc,
+        sigma_inc   = input$sigma_inc,
+        mu_inf      = input$mu_inf,
+        sigma_inf   = input$sigma_inf,
+        mu_od       = input$mu_od,
+        sigma_od    = input$sigma_od,
+        sens.exit   = input$sens.exit,
+        sens.entry  = input$sens.entry,
+        prop.asy    = input$prop.asy,
+        growth_rate = if (!is.null(input$growth_rate)) input$growth_rate else 0,
+        sims        = i[j],
+        seed        = if (!is.null(seed)) seed + j else NULL
+      )
     )
-  )
+    boarded <- 1 - row$prop_symp_at_exit
+    row$cond_sev_at_entry  <- row$prop_sev_at_entry  / boarded
+    row$cond_symp_at_entry <- row$prop_symp_at_entry / boarded
+    row$cond_undetected    <- row$prop_undetected    / boarded
+    row
+  })
 }
 
 #' Run the screening model across a sample of posterior parameter draws
@@ -354,7 +361,10 @@ generate_probabilities <- function(travellers) {
         .data$prop_symp_at_exit,
         .data$prop_symp_at_entry,
         .data$prop_sev_at_entry,
-        .data$prop_undetected
+        .data$prop_undetected,
+        .data$cond_sev_at_entry,
+        .data$cond_symp_at_entry,
+        .data$cond_undetected
       ),
       names_to = "screening",
       values_to = "prob"

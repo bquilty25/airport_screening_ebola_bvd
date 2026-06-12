@@ -434,31 +434,35 @@ run_app <- function() {
         travellers <- generate_travellers(eff_input(), i = rep(100, 200))
         probs <- generate_probabilities(travellers)
 
+        outcome_levels <- c(
+          "prop_symp_at_exit",
+          "prop_sev_at_entry",
+          "prop_symp_at_entry",
+          "prop_undetected",
+          "cond_sev_at_entry",
+          "cond_symp_at_entry",
+          "cond_undetected"
+        )
+        outcome_labels <- c(
+          "Detected at exit screening",
+          "Severely ill during flight",
+          "Detected at entry screening",
+          "Not detected",
+          "— Severely ill during flight (of those who flew)",
+          "— Detected at entry screening (of those who flew)",
+          "— Not detected (of those who flew)"
+        )
         est_df <- data.frame(
           CI = apply(
-            X = probs[, -1] * 10,
+            X = probs[, outcome_levels] * 10,
             MARGIN = 2,
             FUN = make_ci_label
           )
         ) %>%
           tibble::rownames_to_column(var = "name") %>%
           dplyr::mutate(
-            name = factor(
-              .data$name,
-              levels = c(
-                "prop_symp_at_exit",
-                "prop_sev_at_entry",
-                "prop_symp_at_entry",
-                "prop_undetected"
-              ),
-              labels = c(
-                "Detected at exit",
-                "Severe on flight",
-                "Detected on entry",
-                "Not detected"
-              ),
-              ordered = TRUE
-            )
+            name = factor(.data$name, levels = outcome_levels,
+                          labels = outcome_labels, ordered = TRUE)
           ) %>%
           dplyr::arrange(.data$name) %>%
           dplyr::rename(
