@@ -434,42 +434,45 @@ run_app <- function() {
         travellers <- generate_travellers(eff_input(), i = rep(100, 200))
         probs <- generate_probabilities(travellers)
 
-        outcome_levels <- c(
+        unconditional_levels <- c(
           "prop_symp_at_exit",
           "prop_sev_at_entry",
           "prop_symp_at_entry",
-          "prop_undetected",
+          "prop_undetected"
+        )
+        unconditional_labels <- c(
+          "Detected at exit screening",
+          "Severely ill during flight",
+          "Detected at entry screening",
+          "Not detected"
+        )
+        conditional_levels <- c(
           "cond_sev_at_entry",
           "cond_symp_at_entry",
           "cond_undetected"
         )
-        outcome_labels <- c(
-          "Detected at exit screening",
-          "Severely ill during flight",
-          "Detected at entry screening",
-          "Not detected",
-          "— Severely ill during flight (of those who flew)",
-          "— Detected at entry screening (of those who flew)",
-          "— Not detected (of those who flew)"
+        conditional_labels <- c(
+          "— Severely ill during flight",
+          "— Detected at entry screening",
+          "— Not detected"
         )
-        est_df <- data.frame(
-          CI = apply(
-            X = probs[, outcome_levels] * 10,
-            MARGIN = 2,
-            FUN = make_ci_label
+
+        make_rows <- function(levels, labels) {
+          data.frame(
+            "Detection outcome" = labels,
+            "Estimate (95% CI)" = apply(
+              X = probs[, levels] * 10, MARGIN = 2, FUN = make_ci_label
+            ),
+            check.names = FALSE,
+            stringsAsFactors = FALSE
           )
-        ) %>%
-          tibble::rownames_to_column(var = "name") %>%
-          dplyr::mutate(
-            name = factor(.data$name, levels = outcome_levels,
-                          labels = outcome_labels, ordered = TRUE)
-          ) %>%
-          dplyr::arrange(.data$name) %>%
-          dplyr::rename(
-            "Detection outcome" = .data$name,
-            "Estimate (95% CI)" = .data$CI
-          )
-        est_df
+        }
+
+        rbind(
+          make_rows(unconditional_levels, unconditional_labels),
+          data.frame("Detection outcome" = "Of those who flew:", "Estimate (95% CI)" = "", check.names = FALSE, stringsAsFactors = FALSE),
+          make_rows(conditional_levels, conditional_labels)
+        )
       } else {
         NULL
       },
