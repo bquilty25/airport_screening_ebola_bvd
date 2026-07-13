@@ -16,12 +16,33 @@ SIMS_PER_DRAW <- 2000L
 FLIGHT_H <- 12
 SENS_EXIT <- 86
 SENS_ENTRY <- 86
-PROP_ASY <- 5
 MU_INC <- 7.68
 SIGMA_INC <- 12.46
-INC_PRIOR_SD <- 2.6
+# Prior SD on the incubation mean: Wamala et al. (2010)'s own standard error of the
+# mean (SD / sqrt(n) = 3.53 / sqrt(116)), NOT a between-study SD across the three
+# published estimates. MacNeil et al. (2010) is not independent of Wamala (same 2007
+# Uganda outbreak, overlapping cases with confirmed exposure dates), and Kratz et al.
+# (2015) rests on only 3 cases, so a "between-study SD" computed from those three
+# point estimates would be statistically unstable and would double-count the Uganda
+# outbreak. Instead, the MacNeil/Kratz estimates are used only to define the range
+# explored in the incubation-period sensitivity analysis (see fig-sensitivity),
+# keeping formally-propagated parameter uncertainty distinct from structural/
+# between-outbreak uncertainty explored via sensitivity analysis.
+INC_PRIOR_SD <- 3.53 / sqrt(116)
 MU_OD <- median(post$od_mean)
 SIGMA_OD <- median(post$od_sd)^2
+
+# Fever prevalence at presentation among confirmed 2026 BVD cases (Akilimali et al. 2026, NEJM).
+# Thermal/syndromic screening can only detect travellers who are febrile; the ~25.7% of
+# confirmed cases who are never febrile are undetectable via fever-based screening
+# regardless of scanner sensitivity or timing, so they are treated as effectively
+# asymptomatic. This outbreak-specific fever-negative fraction IS the proportion
+# asymptomatic parameter used throughout the model (replacing a generic EVD-literature
+# placeholder), since both represent "undetectable via syndromic screening regardless
+# of scanner sensitivity or timing":
+#   prop.asy = 1 - fever_frac
+FEVER_FRAC <- 0.743
+PROP_ASY <- 100 * (1 - FEVER_FRAC)
 
 # ── Main posterior ────────────────────────────────────────────────────────────
 message("Running main posterior...")
@@ -168,7 +189,7 @@ sens_grid <- tidyr::crossing(
             ~ calc_probs(
                 dur.flight = FLIGHT_H,
                 mu_inc     = .x,
-                sigma_inc  = SIGMA_INC,
+                sigma_inc  = cv2_inc * .x^2, # preserve CV (= fixed Gamma shape), consistent with main analysis
                 mu_inf     = median(post$mean_oa),
                 sigma_inf  = median(post$sd_oa)^2,
                 mu_od      = MU_OD,
@@ -176,6 +197,29 @@ sens_grid <- tidyr::crossing(
                 sens.exit  = SENS_EXIT,
                 sens.entry = SENS_ENTRY,
                 prop.asy   = .y,
+                sims       = 5000L
+            )$prop_undetected
+        )
+    )
+
+# Separate 1-D sweep at the exact default PROP_ASY (not on the regular 5%-spaced
+# plotting grid above) — used only for inline text summaries, kept out of the
+# plotting grid to avoid uneven geom_tile() row heights.
+sens_grid_default_asy <- tibble(mu_inc_s = inc_means) |>
+    mutate(
+        prop_undetected = purrr::map_dbl(
+            mu_inc_s,
+            ~ calc_probs(
+                dur.flight = FLIGHT_H,
+                mu_inc     = .x,
+                sigma_inc  = cv2_inc * .x^2,
+                mu_inf     = median(post$mean_oa),
+                sigma_inf  = median(post$sd_oa)^2,
+                mu_od      = MU_OD,
+                sigma_od   = SIGMA_OD,
+                sens.exit  = SENS_EXIT,
+                sens.entry = SENS_ENTRY,
+                prop.asy   = PROP_ASY,
                 sims       = 5000L
             )$prop_undetected
         )
@@ -302,13 +346,13 @@ flight_durations_mabey <- c(1, 2, 3, 4, 5, 6, 6.42, 8, 10, 12, 13, 14, 16, 18, 2
 mabey_sweep_bdbv <- purrr::map_dfr(flight_durations_mabey, function(h) {
     set.seed(SEED + round(h * 10))
     mu_inc_ks <- pmax(0.5, rnorm(N_DRAWS, mean = MU_INC, sd = INC_PRIOR_SD))
-    
+
     probs <- purrr::map_dbl(mu_inc_ks, function(mu) {
         sig <- cv2_inc * mu^2
         incu <- rgamma(2000L, shape = mu^2 / sig, rate = mu / sig)
-        0.95 * mean(pmin(1, (h/24) / incu))
+        (1 - PROP_ASY / 100) * mean(pmin(1, (h / 24) / incu))
     })
-    
+
     tibble(
         flight_h = h,
         draw_i = seq_len(N_DRAWS),
@@ -319,7 +363,7 @@ mabey_sweep_bdbv <- purrr::map_dfr(flight_durations_mabey, function(h) {
 mabey_sweep_zebov <- purrr::map_dfr(flight_durations_mabey, function(h) {
     # 0% asymptomatic and fixed incubation mean=9.1, SD=7.3
     incu <- rgamma(100000L, shape = 9.1^2 / 7.3^2, rate = 9.1 / 7.3^2)
-    prob <- mean(pmin(1, (h/24) / incu))
+    prob <- mean(pmin(1, (h / 24) / incu))
     tibble(flight_h = h, prop_detected_boarded = prob)
 })
 
@@ -333,6 +377,7 @@ qsave(
         nh_df = nh_df,
         fd_results = fd_results,
         sens_grid = sens_grid,
+        sens_grid_default_asy = sens_grid_default_asy,
         gp_results = gp_results,
         stable = stable,
         screen_grid = screen_grid,
@@ -348,6 +393,7 @@ qsave(
             FLIGHT_H = FLIGHT_H, SENS_EXIT = SENS_EXIT, SENS_ENTRY = SENS_ENTRY,
             PROP_ASY = PROP_ASY, MU_INC = MU_INC, SIGMA_INC = SIGMA_INC,
             INC_PRIOR_SD = INC_PRIOR_SD, MU_OD = MU_OD, SIGMA_OD = SIGMA_OD,
+            FEVER_FRAC = FEVER_FRAC,
             flight_durations = flight_durations,
             doubling_times = doubling_times,
             exit_sens_grid = exit_sens_grid, entry_sens_grid = entry_sens_grid
@@ -357,5 +403,3 @@ qsave(
 )
 
 message("Done. Saved to report/precomputed.qs")
-
-
