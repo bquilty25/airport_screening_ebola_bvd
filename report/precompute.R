@@ -32,17 +32,15 @@ INC_PRIOR_SD <- 3.53 / sqrt(116)
 MU_OD <- median(post$od_mean)
 SIGMA_OD <- median(post$od_sd)^2
 
-# Fever prevalence at presentation among confirmed 2026 BVD cases (Akilimali et al. 2026, NEJM).
-# Thermal/syndromic screening can only detect travellers who are febrile; the ~25.7% of
-# confirmed cases who are never febrile are undetectable via fever-based screening
-# regardless of scanner sensitivity or timing, so they are treated as effectively
-# asymptomatic. This outbreak-specific fever-negative fraction IS the proportion
-# asymptomatic parameter used throughout the model (replacing a generic EVD-literature
-# placeholder), since both represent "undetectable via syndromic screening regardless
-# of scanner sensitivity or timing":
-#   prop.asy = 1 - fever_frac
-FEVER_FRAC <- 0.743
-PROP_ASY <- 100 * (1 - FEVER_FRAC)
+# Fever prevalence at presentation among confirmed 2026 BVD cases (Akilimali et al. 2026, NEJM):
+# 74.3% of confirmed cases were febrile at presentation. Thermal/syndromic screening
+# can only detect travellers who are febrile; the remaining ~25.7% who are never
+# febrile are undetectable via fever-based screening regardless of scanner sensitivity
+# or timing, so they are treated as effectively asymptomatic. This outbreak-specific
+# fever-negative fraction IS the proportion asymptomatic parameter used throughout the
+# model (replacing a generic EVD-literature placeholder). PROP_ASY (not a separate
+# fever_frac variable) is the single source of truth: PROP_ASY = 100 * (1 - 0.743).
+PROP_ASY <- 100 * (1 - 0.743)
 
 # ── Main posterior ────────────────────────────────────────────────────────────
 message("Running main posterior...")
@@ -79,6 +77,32 @@ pp_exit100 <- calc_probs_posterior(
     sims_per_draw = SIMS_PER_DRAW,
     n_draws       = N_DRAWS,
     seed          = SEED + 400L
+) %>%
+    mutate(
+        cond_sev_at_entry = prop_sev_at_entry / (1 - prop_symp_at_exit),
+        cond_symp_at_entry = prop_symp_at_entry / (1 - prop_symp_at_exit),
+        cond_undetected = prop_undetected / (1 - prop_symp_at_exit)
+    )
+
+# ── Fever-controversy contrast: fever_frac = 100% (prop.asy = 0%) ─────────────
+# If WHO's scepticism about the Akilimali et al. (2026) fever-prevalence estimate
+# is correct and true fever prevalence among confirmed cases is closer to 100%
+# (i.e., no afebrile-symptomatic undetectable fraction), this is the resulting
+# lower-bound scenario, contrasted against the main analysis (PROP_ASY above).
+PROP_ASY_ALT <- 0
+message("Running fever_frac = 100% contrast posterior...")
+pp_fever100 <- calc_probs_posterior(
+    post,
+    dur.flight    = FLIGHT_H,
+    mu_inc        = MU_INC,
+    sigma_inc     = SIGMA_INC,
+    inc_prior_sd  = INC_PRIOR_SD,
+    sens.exit     = SENS_EXIT,
+    sens.entry    = SENS_ENTRY,
+    prop.asy      = PROP_ASY_ALT,
+    sims_per_draw = SIMS_PER_DRAW,
+    n_draws       = N_DRAWS,
+    seed          = SEED + 600L
 ) %>%
     mutate(
         cond_sev_at_entry = prop_sev_at_entry / (1 - prop_symp_at_exit),
@@ -383,6 +407,7 @@ qsave(
         screen_grid = screen_grid,
         post = post,
         pp_exit100 = pp_exit100,
+        pp_fever100 = pp_fever100,
         mabey_6_42_exit100 = mabey_6_42_exit100,
         mabey_13_exit100 = mabey_13_exit100,
         mabey_13_exit0 = mabey_13_exit0,
@@ -393,7 +418,7 @@ qsave(
             FLIGHT_H = FLIGHT_H, SENS_EXIT = SENS_EXIT, SENS_ENTRY = SENS_ENTRY,
             PROP_ASY = PROP_ASY, MU_INC = MU_INC, SIGMA_INC = SIGMA_INC,
             INC_PRIOR_SD = INC_PRIOR_SD, MU_OD = MU_OD, SIGMA_OD = SIGMA_OD,
-            FEVER_FRAC = FEVER_FRAC,
+            PROP_ASY_ALT = PROP_ASY_ALT,
             flight_durations = flight_durations,
             doubling_times = doubling_times,
             exit_sens_grid = exit_sens_grid, entry_sens_grid = entry_sens_grid
